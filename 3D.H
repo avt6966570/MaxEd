@@ -1,0 +1,11274 @@
+/*=============================================================================
+**
+**  2004 Max A. Berezhnoy
+**
+**  File:       3D.h
+**  Content:    all 3D math support
+**	Create:		04/03/2004
+**	LAST UPDATE: 08/04/2004 - 18:59
+**	Remarks:	1. На VC60 имеется баг компиляции naked-версии equal(float,float)
+**					(используйте non-naked-версию)
+**
+**
+=============================================================================*/
+#pragma once
+
+#include <stdlib.h>		// FLT_MAX, FLT_MAIN, etc
+#include <float.h>   	// qsort...
+#include <math.h>   	// math support for some math routines (floor()/ceil()...)
+
+
+//=============================================================================
+//								  GENERAL DEFS
+//=============================================================================
+#define FLOAT			float
+
+enum csg_t
+	{
+	CSG_INTERSECT,
+	CSG_UNION,
+	CSG_DIFFERENCE,
+	CSG_SYMMETRIC_DIFFERENCE
+	};
+
+
+
+
+
+
+//=============================================================================
+//								    MATH DEFS
+//=============================================================================
+#define EPSILON			0.0001F
+static const FLOAT EPSILONF = EPSILON;
+
+
+#define FLT_E				2.718281827F
+#define FLT_LOG2E			1.442695041F
+#define FLT_LOG10E			0.434294482F
+#define FLT_PI				3.141592654F
+#define FLT_PI_2			1.570796327F
+#define FLT_PI_4			0.785398163F
+#define FLT_1_PI			0.318309886F
+#define FLT_2_PI			0.636619772F
+#define DBL_E				2.71828182845904523536
+#define DBL_LOG2E			1.44269504088896340736
+#define DBL_LOG10E			0.434294481903251827651
+#define DBL_PI				3.14159265358979323846
+#define DBL_PI_2			1.57079632679489661923
+#define DBL_PI_4			0.785398163397448309616
+#define DBL_1_PI			0.318309886183790671538
+#define DBL_2_PI			0.636619772367581343076
+
+
+#define DEG2RADF( degree )	((degree) * (FLT_PI / 180.0F))
+#define RAD2DEGF( radian )	((radian) * (180.0F / FLT_PI))
+#define DEG2RAD( degree )	((degree) * (DBL_PI / 180.0))
+#define RAD2DEG( radian )	((radian) * (180.0  / DBL_PI))
+
+#define SIGN(exp)			((exp > 0) - (exp < 0))
+
+
+
+
+//=============================================================================
+//								COMMON MATH PROCS
+//=============================================================================
+
+
+
+//-----------------------------------------------------------------------------
+//								  ДЕТЕРМИНАНТ МАТРИЦЫ
+//-----------------------------------------------------------------------------
+
+/*
+** Детерминант 2х2
+*/
+#define __DET2x2(v11, v21, v12, v22)	\
+					(v11*v22 - v12*v21)
+
+/*
+** Детерминант 3х3
+*/
+#define __DET3x3(v11, v21, v31, v12, v22, v32, v13, v23, v33) \
+					(v11*v22*v33 + v12*v23*v31 + \
+					v13*v21*v32 - v13*v22*v31 - \
+					v12*v21*v33 - v11*v23*v32)
+
+/*
+** Детерминант 4х4
+*/
+#define __DET4x4(v)	\
+			(v[0]*__DET3x3(v[5], v[6], v[7], v[9], v[10], v[11], v[13], v[14], v[15]) - \
+			v[4]*__DET3x3(v[1], v[2], v[3], v[9], v[10], v[11], v[13], v[14], v[15]) + \
+			v[8]*__DET3x3(v[1], v[2], v[3], v[5], v[6], v[7], v[13], v[14], v[15]) - \
+			v[12]*__DET3x3(v[1], v[2], v[3], v[5], v[6], v[7], v[9], v[10], v[11]))
+
+
+
+
+//-----------------------------------------------------------------------------
+//						TEST REAL TYPE BAD-STATES (nan, infifnity)
+//-----------------------------------------------------------------------------
+
+/*
+** "Не-число?"
+*/
+#define isnanf(x) (((*(long *)&(x) & 0x7f800000L)==0x7f800000L) && \
+                   ((*(long *)&(x) & 0x007fffffL)!=0000000000L))
+
+/*
+** Бесконечность? (одинарная точность)
+*/
+#define isinff(x) (((*(long *)&(x) & 0x7f800000L)==0x7f800000L) && \
+                   ((*(long *)&(x) & 0x007fffffL)==0000000000L))
+
+/*
+** Бесконечность? (двойная точность)
+*/
+#define isinfd(x) (((*(unsigned __int64 *)(&x)) & 0x7FF0000000000000ui64) == 0x7FF0000000000000ui64) \
+					&& (((*(__int64 *)(&x)) & 0x000FFFFFFFFFFFFFui64) == 0x0000000000000000ui64);
+
+/*
+** "Тихое" число? (одинарная точность)
+*/
+#define finitef(x) (((*(long *)&(x) & 0x7f800000L)!=0x7f800000L))
+
+
+
+
+//-----------------------------------------------------------------------------
+//									WORK WITH BITS
+//-----------------------------------------------------------------------------
+
+#if 1
+	#define BIT(n)				(1<<(n))
+	#define TESTBIT(val,bit)	(val & BIT(bit) ? 1 : 0)
+	#define SETBIT(val,bit)		(val |= BIT(bit))
+	#define CLEARBIT(val,bit)	(val &= ~BIT(bit))
+	#define NEGATEBIT(val,bit)	(val ^= BIT(bit))
+#else
+	__declspec(naked) bool TESTBIT(int value, int bit) {
+		__asm mov	eax, [esp+8]
+		__asm bt	[esp+4], eax
+		__asm setb	al
+		__asm ret
+	}
+
+	__declspec(naked) void SETBIT(int& value, int bit) {
+		__asm mov	eax, [esp+4]
+		__asm mov	ebx, [esp+8]
+		__asm bts	[eax], ebx
+		__asm ret
+	}
+
+	__declspec(naked) void CLEARBIT(int& value, int bit) {
+		__asm mov	eax, [esp+4]
+		__asm mov	ebx, [esp+8]
+		__asm btr	[eax], ebx
+		__asm ret
+	}
+
+	__declspec(naked) void NEGATEBIT(int& value, int bit) {
+		__asm mov	eax, [esp+4]
+		__asm mov	ebx, [esp+8]
+		__asm btc	[eax], ebx
+		__asm ret
+	}
+#endif
+
+
+/*
+** Двоичные константы
+*/
+
+#define BIN___(x)                       \
+    (                                   \
+    ((x / 01ul) % 010)*(2>>1) +         \
+    ((x / 010ul) % 010)*(2<<0) +        \
+    ((x / 0100ul) % 010)*(2<<1) +       \
+    ((x / 01000ul) % 010)*(2<<2) +      \
+    ((x / 010000ul) % 010)*(2<<3) +     \
+    ((x / 0100000ul) % 010)*(2<<4) +    \
+    ((x / 01000000ul) % 010)*(2<<5) +   \
+    ((x / 010000000ul) % 010)*(2<<6)    \
+    )
+
+#define BIN8(x) BIN___(0##x)
+
+#define BIN16(x1,x2) \
+    ((BIN(x1)<<8)+BIN(x2))
+
+#define BIN24(x1,x2,x3) \
+    ((BIN(x1)<<16)+(BIN(x2)<<8)+BIN(x3))
+
+#define BIN32(x1,x2,x3,x4) \
+    ((BIN(x1)<<24)+(BIN(x2)<<16)+(BIN(x3)<<8)+BIN(x4))
+
+
+
+
+/*
+** Swap byte (0xAABBCCDD => 0xDDCCBBAA)
+*/
+extern "C" inline 
+	void bswap(unsigned long* val)
+	{
+	__asm mov		edi, val
+	__asm mov		eax, [edi]
+	__asm bswap		eax
+	__asm mov		[edi], eax
+	}
+
+/*
+** Обнулить крайний справа еденичный бит
+*/
+inline long zrb(long x)
+{
+	return x & (x - 1);
+}
+
+/*
+** Проверить беззнаковое число на соответствие виду 2n - 1
+*/
+inline unsigned long _2n1(unsigned long x)
+{
+	return x & (x + 1);
+}
+
+/*
+** Выделить крайний справа единичный бит
+** (например 01011000 => 00001000, если такого нет - возвращается ноль)
+*/
+inline long sreb(long x)
+{
+	return x & (-x);
+}
+
+/*
+** Выделить крайний справа нулевой бит
+** (например 10100111 => 00001000, если такого нет - возвращается ноль)
+*/
+inline long srzb(long x)
+{
+	return -x & (x + 1);
+}
+
+/*
+** Маска идентифицирующая завершающие нулевые биты
+** (например 01011000 => 00000111, если исходное слово ноль
+** все биты маски равны 1)
+*/
+inline long mskzb(long x)
+{
+	return -x & (x - 1);
+}
+
+/*
+** Распространяет вправо крайне правый еденичный бит
+** (например 01011000 => 01011111, если исходное слово ноль
+** все биты результата равны 1)
+*/
+inline long reb(long x)
+{
+	return x | (x - 1);
+}
+
+/*
+** Обнуление крайней справа непрерывной подстроки еденичных битов
+** (01011000 => 01000000)
+*/
+inline long zrbs(long x)
+{
+	return ((x | (x - 1)) + 1) & x;
+}
+
+
+inline long sign(long x)
+{
+	return (x > 0) - (x < 0);
+}
+
+inline long isign(long x, long y)
+{
+	return y < 0 ? -abs(x) : abs(x);
+}
+
+
+
+/*
+** Наибольшая степень 2 не превосходящая значение х
+*/
+inline unsigned long flp2(unsigned long x)
+{
+	x |= (x >> 1);
+	x |= (x >> 2);
+	x |= (x >> 4);
+	x |= (x >> 8);
+	x |= (x >> 16);
+	return x - (x >> 1);
+}
+
+/*
+** Наименьшая степень 2 не уступающая значению х
+*/
+inline unsigned long clp2(unsigned long x)
+{
+	--x;
+	x |= (x >> 1);
+	x |= (x >> 2);
+	x |= (x >> 4);
+	x |= (x >> 8);
+	x |= (x >> 16);
+	return x + 1;
+}
+
+/*
+** Подсчет количества единичных битов
+*/
+unsigned long pop(unsigned long x)
+{
+	x -= ((x >> 1) & 0x55555555);
+	x = (x & 0x33333333) + ((x >> 2) & 0x33333333);
+	x = (x + (x >> 4)) & 0x0F0F0F0F;
+	x += (x >> 8);
+	x += (x >> 16);
+	return x & 0x0000003F;
+}
+
+/*
+** Подсчет количества единичных битов HAKMEM [25, item 169]
+*/
+unsigned long pop2(unsigned long x)
+{
+/*	unsigned long n;
+	n = (x >> 1) & 033333333333;
+	x -= n;
+	n = (x >> 1) & 033333333333;
+	x -= n;
+	x = (x + (n >> 3)) & 030707070707;
+	x = modu(x, 63);
+	return x;*/
+	unsigned long n;
+	n = (x >> 1) & 0x77777777;
+	x -= n;
+	n = (n >> 1) & 0x77777777;
+	x -= n;
+	n = (n >> 1) & 0x77777777;
+	x -= n;
+	x = (x + (x >> 4)) & 0x0F0F0F0F;
+	x *= 0x01010101;
+	return x >> 24;
+}
+
+/*
+** Подсчет количества единичных битов с использованием цикла
+*/
+inline unsigned long popl(unsigned long x)
+{
+	unsigned long sum = x;
+	while(x != 0) {
+		x >>= 1;
+		sum -= x;
+	}
+
+	return sum;
+}
+
+
+
+/*
+** Подсчет ведущих нулевых битов
+*/
+inline unsigned long nlz(unsigned long x)
+{
+	if (x == 0) return 32;
+	unsigned long n = 0;
+	if (x <= 0x0000FFFF) { n +=16; x <<=16; };
+	if (x <= 0x00FFFFFF) { n += 8; x <<= 8; };
+	if (x <= 0x0FFFFFFF) { n += 4; x <<= 4; };
+	if (x <= 0x3FFFFFFF) { n += 2; x <<= 2; };
+	if (x <= 0x7FFFFFFF) { ++n; };
+	return n;
+}
+
+/*
+** Подсчет ведущих нулевых битов
+** (все сравнения заменяются командами "and")
+*/
+inline unsigned long nlzand(unsigned long x)
+{
+	if (x == 0) return 32;
+	unsigned long n = 0;
+	if ((x & 0xFFFF0000) == 0) { n +=16; x <<=16; };
+	if ((x & 0xFF000000) == 0) { n += 8; x <<= 8; };
+	if ((x & 0xF0000000) == 0) { n += 4; x <<= 4; };
+	if ((x & 0xC0000000) == 0) { n += 2; x <<= 2; };
+	if ((x & 0x80000000) == 0) { ++n; };
+	return n;
+}
+
+/*
+** Подсчет ведущих нулевых битов бинарным поиском
+*/
+inline unsigned long nlzbs(unsigned long x)
+{
+	if (x == 0) return 32;
+	unsigned long n = 1;
+	if ((x >> 16) == 0) { n +=16; x <<=16; };
+	if ((x >> 24) == 0) { n += 8; x <<= 8; };
+	if ((x >> 28) == 0) { n += 4; x <<= 4; };
+	if ((x >> 30) == 0) { n += 2; x <<= 2; };
+	n -= (x >> 31);
+	return n;
+}
+
+/*
+** Подсчет ведущих нулевых битов бинарным поиском
+** в обратном направлении
+*/
+inline unsigned long nlzbsr(unsigned long x)
+{
+	if (x == 0) return 32;
+	unsigned long y, n = 32;
+	y = x >>16; if (y != 0) { n -=16; x = y; }
+	y = x >> 8; if (y != 0) { n -= 8; x = y; }
+	y = x >> 4; if (y != 0) { n -= 4; x = y; }
+	y = x >> 2; if (y != 0) { n -= 2; x = y; }
+	y = x >> 1; if (y != 0) return n - 2;
+	return n - x;
+}
+
+/*
+** Подсчет ведущих нулевых битов бинарным поиском
+** с использованием цикла
+*/
+inline unsigned long nlzbsl(unsigned long x)
+{
+	unsigned long y, n = 32, c = 16;
+	do {
+		y = x >> c;
+		if(y != 0) { n -= c; x = y; }
+		c >>= 1;
+	} while (c != 0);
+	n -= (x >> 31);
+	return n - x;
+}
+
+/*
+** Двухсторонний подсчет ведущих нулевых битов
+*/
+inline unsigned long nlztwos(unsigned long x)
+{
+	unsigned long y = x, n = 0;
+L:
+	if(x < 0) return n;
+	if(y == 0) return 32 - n;
+	++n;
+	x <<= 1;
+	y >>= 1;
+	goto L;
+}
+
+/*
+** Подсчет ведущих нулевых битов бинарным поиском
+** без условных переходов
+*/
+inline unsigned long nlzbswc(unsigned long x)
+{
+	long y, m, n;
+
+	y = -(long)(x >> 16);
+	m = (y >> 16) & 16;
+	n = 16 - m;
+	x >>= m;
+
+	y = x - 0x100;
+	m = (y >> 16) & 8;
+	n += m;
+	x <<= m;
+
+	y = x - 0x1000;
+	m = (y >> 16) & 4;
+	n += m;
+	x <<= m;
+
+	y = x - 0x4000;
+	m = (y >> 16) & 2;
+	n += m;
+	x <<= m;
+
+	y = x >> 14;
+	m = y & ~(y >> 1);
+	return n + 2 - m;
+}
+
+/*
+** Подсчет ведущих нулевых битов с использованием pop(x)
+*/
+inline unsigned long nlzpop(unsigned long x)
+{
+	x |= (x >> 1);
+	x |= (x >> 2);
+	x |= (x >> 4);
+	x |= (x >> 8);
+	x |= (x >> 16);
+	return pop(~x);
+}
+
+/*
+** Подсчет ведущих нулевых битов double
+*/
+inline unsigned long nlzdblle(unsigned long x)
+{
+	union {
+		unsigned long asInt[2];
+		double asDouble;
+	};
+
+	asDouble = (double)x + 0.5;
+	return 1054 - (asInt[1] >> 20);
+}
+
+
+
+/*
+** Подсчет завершающих нулевых битов бинарным поиском
+*/
+inline unsigned long ntz(unsigned long x)
+{
+	if (x == 0) return 32;
+	unsigned long n = 1;
+	if ((x & 0x0000FFFF) == 0) { n +=16; x >>=16; };
+	if ((x & 0x000000FF) == 0) { n += 8; x >>= 8; };
+	if ((x & 0x0000000F) == 0) { n += 4; x >>= 4; };
+	if ((x & 0x00000003) == 0) { n += 2; x >>= 2; };
+	return n - (x & 1);
+}
+
+
+/*
+** Подсчет завершающих нулевых битов
+** (малые непосредственно задаваемые значения)
+*/
+inline unsigned long ntzm(unsigned long x)
+{
+	if (x == 0) return 32;
+	unsigned long y, n = 31;
+	y = x <<16; if (y != 0) { n -=16; x = y; }
+	y = x << 8; if (y != 0) { n -= 8; x = y; }
+	y = x << 4; if (y != 0) { n -= 4; x = y; }
+	y = x << 2; if (y != 0) { n -= 2; x = y; }
+	//y = x << 1; if (y != 0) return --n;
+	n -= ((x << 1) >> 31);
+	return n;
+}
+
+/*
+** Подсчет завершающих нулевых битов (цикл)
+*/
+inline unsigned long ntzl(unsigned long x)
+{
+	unsigned long n = 0;
+	x = ~x & (x - 1);
+	while(x != 0) {
+		++n;
+		x >>= 1;
+	}
+	return n;
+}
+
+
+
+/*
+** Поиск первого слева нулевого байта
+*/
+inline unsigned long zbytelc(unsigned long x)
+{
+	if((x >> 24) == 0) return 0; else
+	if((x & 0x00FF0000) == 0) return 1; else
+	if((x & 0x0000FF00) == 0) return 2; else
+	if((x & 0x000000FF) == 0) return 3; else
+	return 4;
+}
+
+
+/*
+** Поиск первого слева нулевого байта (без ветвления)
+*/
+inline unsigned long zbytel(unsigned long x)
+{
+	unsigned long y;
+	long n;
+
+	y = (x & 0x7F7F7F7F) + 0x7F7F7F7F;
+	y = ~(y | x | 0x7F7F7F7F);
+	n = nlz(y) >> 3;
+	return n;
+}
+
+
+/*
+** Поиск первой строки и n единичных битов с помощью "сдвига" а "и"
+** (если такой нет - возвращает 32)
+*/
+inline unsigned long ffstrl(unsigned long x, int n)
+{
+	unsigned long s;
+	while(n > 1)
+	{
+		s = n >> 1;
+		x &= (x << s);
+		n -= s;
+	}
+
+	return nlz(x);
+}
+
+
+
+/*
+** Реверс битов
+*/
+inline unsigned long rev(unsigned long x)
+{
+	x = (x & 0x55555555) << 1 | (x >> 1) & 0x55555555;
+	x = (x & 0x33333333) << 2 | (x >> 2) & 0x33333333;
+	x = (x & 0x0F0F0F0F) << 4 | (x >> 4) & 0x0F0F0F0F;
+	x = (x << 24) | ((x & 0xFF00) << 8) |
+		((x >> 8) & 0xFF00) | (x >> 24);
+	return x;
+}
+
+
+/*
+** Обмен слов в регистре
+*/
+inline unsigned long swapword(unsigned long x)
+{
+	return (x >> 16) | (x << 16);
+}
+
+
+/*
+** Внешнее идеальное перемешивание (external perfect shuffle)
+** (abcd efgh ijkl mnop ABCD EFGH IJKL MNOP =>
+**  aAbB cCdD eEfF gGhH iIjJ kKlL mMnN oOpP)
+*/
+inline unsigned long extpshuffle(unsigned long x)
+{
+	unsigned long t;
+	t = (x ^ (x >> 8)) & 0x0000FF00; x = x ^ t ^ (t << 8);
+	t = (x ^ (x >> 4)) & 0x00F000F0; x = x ^ t ^ (t << 4);
+	t = (x ^ (x >> 2)) & 0x0C0C0C0C; x = x ^ t ^ (t << 2);
+	t = (x ^ (x >> 1)) & 0x22222222; x = x ^ t ^ (t << 1);
+	return x;
+}
+
+/*
+** Внешнее идеальное обратное перемешивание (external perfect unshuffle)
+*/
+inline unsigned long extpunshuffle(unsigned long x)
+{
+	unsigned long t;
+	t = (x ^ (x >> 1)) & 0x22222222; x = x ^ t ^ (t << 1);
+	t = (x ^ (x >> 2)) & 0x0C0C0C0C; x = x ^ t ^ (t << 2);
+	t = (x ^ (x >> 4)) & 0x00F000F0; x = x ^ t ^ (t << 4);
+	t = (x ^ (x >> 8)) & 0x0000FF00; x = x ^ t ^ (t << 8);
+	return x;
+}
+
+
+/*
+** Внутреннее идеальное перемешивание (internal perfect shuffle)
+** (abcd efgh ijkl mnop ABCD EFGH IJKL MNOP =>
+**  AaBb CcDd EeFf GgHh IiJj KkLl MmNn OoPp)
+*/
+inline unsigned long intpshuffle(unsigned long x)
+{
+	return extpshuffle(swapword(x));
+}
+
+/*
+** Внутреннее идеальное обратное перемешивание (internal perfect unshuffle)
+*/
+inline unsigned long intpunshuffle(unsigned long x)
+{
+	return swapword(extpunshuffle(x));
+}
+
+/*
+** Транспонирование битовой матрицы 32х32
+*/
+inline void transpose32(unsigned long A[32])
+{
+	for(unsigned j = 16, m = 0x0000FFFF, t; j; j >>= 1, m ^= (m << j))
+		for(unsigned k = 0; k < 32; k = (k + j + 1) & ~j)
+		{
+			t = (A[k] ^ (A[k+j] >> j)) & m;
+			A[k] ^= t;
+			A[k+j] ^= (t << j);
+		}
+}
+
+/*
+** Сжатие (или обобщенное извлечение) на основе простого цикла
+*/
+inline unsigned long compress(unsigned long x, unsigned long m)
+{
+	unsigned long r = 0, b, s = 0;	// result, shift, mask bit
+	do {
+		b = m & 1;
+		r |= ((x & b) << s);
+		s += b;
+		x >>= 1;
+		m >>= 1;
+	} while (m != 0);
+	return r;
+}
+
+/*
+** Сжатие (или обобщенное извлечение) на основе параллельного префикса
+*/
+inline unsigned long compresspp(unsigned long x, unsigned long m)
+{
+	unsigned long mk, mp, mv, t;
+
+	x &= m;
+	mk = ~m << 1;
+	for(unsigned i = 0; i < 5; ++i) {
+		mp = mk ^ (mk << 1);
+		mp ^= (mp << 2);
+		mp ^= (mp << 4);
+		mp ^= (mp << 8);
+		mp ^= (mp << 16);
+		mv = mp & m;
+		m = m ^ mv | (mv >> (1 << i));
+		t = x & mv;
+		x = x ^ t | (t >> (1 << i));
+		mk &= ~mp;
+	}
+
+	return x;
+}
+
+
+
+
+//-----------------------------------------------------------------------------
+//								FLOATING POINT MATH
+//-----------------------------------------------------------------------------
+
+inline void floor(FLOAT& x, int val)
+{
+	x = floor(x / val + 0.5F) * val;
+}
+
+inline void ceil(FLOAT& x, int val)
+{
+	x = ceil(x / val - 0.5F) * val;
+}
+
+__declspec(naked) inline FLOAT __fastcall fastabs(FLOAT a) {
+	__asm fld	DWORD PTR [esp+4] 
+	__asm fabs
+	__asm ret 4
+}
+
+__declspec(naked) inline FLOAT __fastcall fastsin(FLOAT a) {
+	__asm fld	DWORD PTR [esp+4] 
+	__asm fsin
+	__asm ret 4
+}
+
+__declspec(naked) inline FLOAT __fastcall fastcos(FLOAT a) {
+	__asm fld	DWORD PTR [esp+4] 
+	__asm fcos
+	__asm ret 4
+}
+
+__declspec(naked) inline FLOAT __fastcall fastdot(const FLOAT* s1,
+										   const FLOAT* s2)
+{
+	//return s1[0]*s2[0] + s1[1]*s2[1] + s1[2]*s2[2];
+	__asm fld	DWORD PTR [edx]
+	__asm fmul	DWORD PTR [ecx]
+	__asm fld	DWORD PTR [edx+4]
+	__asm fmul	DWORD PTR [ecx+4]
+	__asm fadd
+	__asm fld	DWORD PTR [edx+8]
+	__asm fmul	DWORD PTR [ecx+8]
+	__asm fadd
+	__asm ret
+}
+
+__declspec(naked) inline FLOAT __fastcall fastmag(const FLOAT* s)
+{
+	//return sqrt(s[0]*s[0] + s[1]*s[1] + s[2]*s[2]);
+	__asm {
+		fld		dword ptr [ecx+8]
+		fld		dword ptr [ecx+4]
+		fld		dword ptr [ecx]
+		fld		st(0)
+		fmul	st(0), st(1)
+		fld		st(2)
+		fmul	st(0), st(3)
+		faddp	st(1), st(0)
+		fld		st(3)
+		fmul	st(0), st(4)
+		faddp	st(1), st(0)
+		fsqrt
+		fstp	st(3)
+		fstp	st(0)
+		fstp	st(0)
+		ret
+	};
+}
+
+
+// sincos
+#if 1 // _USE_NAKED_VERSION
+	extern "C" __declspec(naked) inline
+		void __fastcall sincos(FLOAT radf, FLOAT* sinf, FLOAT* cosf)
+		{
+		__asm fld		[esp+4]
+		__asm fsincos	   
+		__asm fstp		[edx]
+		__asm fstp		[ecx]
+		__asm ret		4
+		}
+
+	extern "C" __declspec(naked) inline
+		bool __cdecl equal(FLOAT x, FLOAT y)
+		{
+			__asm {
+				fld		[esp+4]
+				fsub	[esp+8]
+				fabs
+				fcomp	EPSILONF
+				fnstsw	ax
+				test	ah, 5
+				setnp	al
+				ret		0
+			};
+		}
+#else
+	extern "C" inline
+		void sincos(FLOAT rad, FLOAT* sinf, FLOAT* cosf)
+		{
+		__asm mov		eax, sinf
+		__asm mov		ebx, cosf
+		__asm fld		rad
+		__asm fsincos	   
+		__asm fstp		[ebx]
+		__asm fstp		[eax]
+		}
+
+	extern "C" inline
+		bool equal(FLOAT x, FLOAT y)
+		{
+			__asm {
+				fld		x
+				fsub	y
+				fabs
+				fcomp	EPSILONF
+				fnstsw	ax
+				test	ah, 5
+				setnp	al
+			};
+		}
+#endif
+
+
+// floating value compare
+#define FLOAT_EQ(x,v)		(((v - EPSILON) < x) && (x <( v + EPSILON)))
+
+
+
+
+
+//----------------------------------------------------------------------------
+//								RANDOM GENERATORS
+//----------------------------------------------------------------------------
+inline long L_rand()
+	{
+	return rand() * RAND_MAX + rand();
+	}
+
+inline long L_rand(long x)
+	{	// get pseudorandom number in range (-x, x)
+	return L_rand() % x;
+	}
+
+inline long L_rand(long a, long b)
+	{	// get pseudorandom number in range (a, b)
+	return a + L_rand(b - a);
+	}
+
+inline unsigned UI_rand()
+	{
+	static unsigned int x1;
+    static unsigned int x2;
+    x1 += x2 + 92735;	//any constants
+    x2 += x1 + 14352;
+    return x1;
+	}
+
+inline unsigned UI_rand(unsigned x)
+	{	// get pseudorandom unsigned number in range [0, x)
+	return UI_rand() % x;
+	}
+
+inline unsigned UI_rand(unsigned a, unsigned b)
+	{	// get pseudorandom number in range (a, b)
+	return a + UI_rand(b - a);
+	}
+
+inline FLOAT F01_rand()
+	{	// very fast 32-bit pseudorandom number generator (D.Knuth)
+		// get FLOAT value in [0.0, 1.0] range
+    static int iran;
+    iran = 1664525L * iran + 1013904223L;
+    int temp = 0x3f800000 | (0x007fffff & iran);
+    return reinterpret_cast<FLOAT&>(temp) - 1.F;
+	}
+
+inline FLOAT F_rand()
+	{
+	return L_rand() + F01_rand();
+	}
+
+inline FLOAT F_rand(FLOAT x)
+	{
+	return L_rand((long)x) - 1 + F01_rand();
+	}
+
+inline FLOAT F_rand(FLOAT a, FLOAT b)
+	{
+	return a + F_rand(b - a);
+	}
+
+
+
+
+
+
+
+//----------------------------------------------------------------------------
+//									SORTING
+//----------------------------------------------------------------------------
+
+template<typename T>
+void t_shortsort(T* lo, T* hi, int (__cdecl *comp)(const T*, const T*))
+{
+    T *p, *max, tmp;
+    while(hi > lo) {
+        max = lo;
+        for (p = &lo[1]; p <= hi; ++p)
+            if(comp(p, max) > 0)
+                max = p;
+        tmp = *max, *max = *hi, *hi = tmp;
+        --hi;
+    }
+}
+
+template<typename T>
+void t_shortsort(T** lo, T** hi, int (__cdecl *comp)(const T*, const T*))
+{
+    T **p, **max, *tmp;
+    while(hi > lo) {
+        max = lo;
+        for (p = &lo[1]; p <= hi; ++p)
+            if(comp(*p, *max) > 0)
+                max = p;
+        tmp = *max, *max = *hi, *hi = tmp;
+        --hi;
+    }
+}
+
+
+// qsort
+#define CUTOFF	8
+#define STKSIZ	(8 * sizeof(void*) - 2)
+
+template<typename T>
+void t_qsort(T *base, size_t num, int (__cdecl *comp)(const T*, const T*))
+{
+	T tmp;							// for swap
+    T *lostk[STKSIZ], *histk[STKSIZ];
+
+    if (num < 2 || sizeof(T) == 0)
+        return;						/* nothing to do */
+
+    int stkptr = 0;                 /* initialize stack */
+    T *lo = base;
+    T *hi = base + (num-1);			/* initialize limits */
+
+recurse:
+    size_t size = (hi - lo);		/* number of el's to sort */
+    if(size <= CUTOFF)
+        t_shortsort(lo, hi, comp);
+	else
+	{
+        T *mid = lo + (size / 2);
+        if(comp(lo, mid) > 0) tmp = *lo, *lo = *mid, *mid = tmp;
+        if(comp(lo, hi) > 0)  tmp = *lo, *lo = *hi, *hi = tmp;
+        if(comp(mid, hi) > 0) tmp = *mid, *mid = *hi, *hi = tmp;
+
+        T *loguy = lo, *higuy = hi;
+
+        while(1)
+		{
+            if(mid > loguy) do ++loguy; while (loguy < mid && comp(loguy, mid) <= 0);
+            if(mid <= loguy)do ++loguy; while (loguy <= hi && comp(loguy, mid) <= 0);
+
+            do --higuy; while (higuy > mid && comp(higuy, mid) > 0);
+
+            if(higuy < loguy)
+                break;
+
+            tmp = *loguy, *loguy = *higuy, *higuy = tmp;
+
+            if(mid == higuy)
+                mid = loguy;
+        }
+
+        ++higuy;
+        if(mid < higuy)	do --higuy; while (higuy > mid && comp(higuy, mid) == 0);
+        if(mid >= higuy)do --higuy; while (higuy > lo && comp(higuy, mid) == 0);
+
+        if( higuy - lo >= hi - loguy ) {
+            if(lo < higuy) {
+                lostk[stkptr] = lo;
+                histk[stkptr] = higuy;
+                ++stkptr;
+            }                           /* save big recursion for later */
+
+            if(loguy < hi) {
+                lo = loguy;
+                goto recurse;           /* do small recursion */
+            }
+        }
+        else {
+            if(loguy < hi) {
+                lostk[stkptr] = loguy;
+                histk[stkptr] = hi;
+                ++stkptr;               /* save big recursion for later */
+            }
+
+            if(lo < higuy) {
+                hi = higuy;
+                goto recurse;           /* do small recursion */
+            }
+        }
+    }
+
+    --stkptr;
+    if(stkptr >= 0) {
+        lo = lostk[stkptr];
+        hi = histk[stkptr];
+        goto recurse;           /* pop subarray from stack */
+    }
+    else
+        return;                 /* all subarrays done */
+}
+
+template<typename T>
+void t_qsort(T **base, size_t num, int (__cdecl *comp)(const T*, const T*))
+{
+	T *tmp;							// for swap
+    T **lostk[STKSIZ], **histk[STKSIZ];
+
+    if (num < 2 || sizeof(T) == 0)
+        return;						/* nothing to do */
+
+    int stkptr = 0;                 /* initialize stack */
+    T **lo = base;
+    T **hi = base + (num-1);		/* initialize limits */
+
+recurse:
+    size_t size = (hi - lo);		/* number of el's to sort */
+    if(size <= CUTOFF)
+        t_shortsort(lo, hi, comp);
+	else
+	{
+        T **mid = lo + (size / 2);
+        if(comp(*lo, *mid) > 0) tmp = *lo, *lo = *mid, *mid = tmp;
+        if(comp(*lo, *hi) > 0)  tmp = *lo, *lo = *hi, *hi = tmp;
+        if(comp(*mid, *hi) > 0) tmp = *mid, *mid = *hi, *hi = tmp;
+
+        T **loguy = lo, **higuy = hi;
+
+        while(1)
+		{
+            if(mid > loguy) do ++loguy; while (loguy < mid && comp(*loguy, *mid) <= 0);
+            if(mid <= loguy)do ++loguy; while (loguy <= hi && comp(*loguy, *mid) <= 0);
+
+            do --higuy; while (higuy > mid && comp(*higuy, *mid) > 0);
+
+            if(higuy < loguy)
+                break;
+
+            tmp = *loguy, *loguy = *higuy, *higuy = tmp;
+
+            if(mid == higuy)
+                mid = loguy;
+        }
+
+        ++higuy;
+        if(mid < higuy)	do --higuy; while (higuy > mid && comp(*higuy, *mid) == 0);
+        if(mid >= higuy)do --higuy; while (higuy > lo && comp(*higuy, *mid) == 0);
+
+        if( higuy - lo >= hi - loguy ) {
+            if(lo < higuy) {
+                lostk[stkptr] = lo;
+                histk[stkptr] = higuy;
+                ++stkptr;
+            }                           /* save big recursion for later */
+
+            if(loguy < hi) {
+                lo = loguy;
+                goto recurse;           /* do small recursion */
+            }
+        }
+        else {
+            if(loguy < hi) {
+                lostk[stkptr] = loguy;
+                histk[stkptr] = hi;
+                ++stkptr;               /* save big recursion for later */
+            }
+
+            if(lo < higuy) {
+                hi = higuy;
+                goto recurse;           /* do small recursion */
+            }
+        }
+    }
+
+    --stkptr;
+    if(stkptr >= 0) {
+        lo = lostk[stkptr];
+        hi = histk[stkptr];
+        goto recurse;           /* pop subarray from stack */
+    }
+    else
+        return;                 /* all subarrays done */
+}
+
+#undef CUTOFF
+#undef STKSIZ
+
+
+
+
+
+
+
+//----------------------------------------------------------------------------
+//									BBOX CHECK OPS
+//----------------------------------------------------------------------------
+
+#if 1
+	#define CROSS(a, b, c, d)	(!(a > d || b < c))
+	#define SCROSS(a, b, c, d)	(!(a >= d || b <= c))
+	#define INSIDE(a, b, c, d)	(a > c && b < d)
+	#define SINSIDE(a, b, c, d)	(a >= c && b <= d)
+	#define INSIDEX(x, a, b)	(x > a && x < b)
+	#define SINSIDEX(x, a, b)	(x >= a && x <= b)
+#else
+	template<class T> inline bool CROSS(T a, T b, T c, T d) {
+		return !(a > d || b < c));
+	}
+
+	template<class T> inline bool SCROSS(T a, T b, T c, T d) {
+		return !(a >= d || b <= c));
+	}
+
+	template<class T> inline bool INSIDE(T a, T b, T c, T d) {
+		return a > c && b < d;
+	}
+
+	template<class T> inline bool SINSIDE(T a, T b, T c, T d) {
+		return a >= c && b <= d;
+	}
+
+	template<class T> inline bool INSIDE(T x, T a, T b) {
+		return x > a && x < b;
+	}
+
+	template<class T> inline bool SINSIDE(T x, T a, T b) {
+		return x >= a && x <= b;
+	}
+#endif
+
+
+
+
+/*
+===============================================================================
+Procs:	bool bbox_cross(const T b1min, const T b1max, const T b2min, const T b2max,
+						const bool strong, const T correction)
+Desc:	Check bbox`s intersection
+Rem:	1. "strong" - касание НЕ считается пересечением
+		2. коррекция тестируемого объема (b1) (- -- сжатие, + -- раздувание)
+===============================================================================
+*/
+template<class T>
+	inline bool bbox_cross(const T b1min, const T b1max, const T b2min, const T b2max,
+						   const bool strong = false, const T correction = 0.0F)
+	{
+	return !(strong ?
+					correction ?
+						b1min - correction >= b2max ||
+						b1max + correction <= b2min :
+						b1min >= b2max ||
+						b1max <= b2min
+					:
+					correction ?
+						b1min - correction > b2max ||
+						b1max + correction < b2min :
+						b1min > b2max ||
+						b1max < b2min);
+	}
+
+
+
+/*
+===============================================================================
+Procs:	bool bbox_inside(const T b1min, const T b1max, const T b2min, const T b2max,
+							const bool strong, const T correction)
+Desc:	Is bbox1 inside in bbox2?
+Rem:	1. "strong" - касание внутренностей уже НЕ считается нахождением внутри
+		2. коррекция тестируемого объема (b1) (`-` -- сжатие, `+` -- раздувание)
+===============================================================================
+*/
+template<class T>
+	inline bool bbox_inside(const T b1min, const T b1max, const T b2min, const T b2max,
+							const bool strong = false, const T correction = 0.0F)
+	{
+	return strong ?
+					correction ?
+						b1min - correction > b2min &&
+						b1max + correction < b2max :
+						b1min > b2min &&
+						b1max < b2max
+					:
+					correction ?
+						b1min - correction >= b2min &&
+						b1max + correction <= b2max :
+						b1min >= b2min &&
+						b1max <= b2max;
+	}
+
+
+
+/*
+===============================================================================
+Procs:	bool bbox_inside(const T x, const T bmin, const T bmax, const bool strong)
+Desc:	x inside in bbox?
+Rem:	1. "strong" - касание НЕ считается нахождением внутри
+===============================================================================
+*/
+template<class T>
+	inline bool bbox_inside(const T x, const T bmin, const T bmax,
+							const bool strong = false)
+	{
+	return strong ? x > bmin && x < bmax : x >= bmin && x <= bmax;
+	}
+
+
+
+
+
+//=============================================================================
+//								  VECTOR1
+//=============================================================================
+
+struct VECTOR1
+{
+	VECTOR1()
+		{
+		}
+
+	explicit VECTOR1( FLOAT _Val)
+		: X(_Val)
+		{
+		}
+
+	explicit VECTOR1( const FLOAT* _pF)
+		{
+		X = *_pF;
+		}
+
+	VECTOR1( const VECTOR1& _Start, const VECTOR1& _End )
+		: X(_End.X - _Start.X)
+		{
+		}
+
+	void operator ()(FLOAT _X)
+		{	// reinit
+		X = _X;
+		}
+
+	// assignment operators
+    VECTOR1& operator += ( const VECTOR1& _Vec )
+		{
+		X += _Vec.X;
+		return *this;
+		}
+
+    VECTOR1& operator -= ( const VECTOR1& _Vec )
+		{
+		X -= _Vec.X;
+		 return *this;
+		}
+
+    VECTOR1& operator *= ( FLOAT _Scale )
+		{
+		X *= _Scale;
+		return *this;
+		}
+
+    VECTOR1& operator /= ( FLOAT _Scale )
+		{
+		X /= _Scale;
+		return *this;
+		}
+
+    // unary operators
+    VECTOR1 operator + () const
+		{
+		return *this;
+		}
+
+    VECTOR1 operator - () const
+		{
+		return VECTOR1(-X);
+		}
+
+	// compare
+    bool operator == ( const VECTOR1& _Vec ) const
+		{
+		return X == _Vec.X;
+		}
+
+    bool operator != ( const VECTOR1& _Vec ) const
+		{
+		return X != _Vec.X;
+		}
+
+	bool isZero() const
+		{
+		return X == 0;
+		}
+
+	bool isFZero() const
+		{
+		return equal(X, 0);
+		}
+
+	// gab test
+    bool operator < ( const VECTOR1& _Vec ) const
+		{
+		return X < _Vec.X;
+		}
+
+    bool operator <= ( const VECTOR1& _Vec ) const
+		{
+		return X <= _Vec.X;
+		}
+
+    bool operator > ( const VECTOR1& _Vec ) const
+		{
+		return X > _Vec.X;
+		}
+
+    bool operator >= ( const VECTOR1& _Vec ) const
+		{
+		return X >= _Vec.X;
+		}
+
+	// binary operators
+    VECTOR1 operator + ( const VECTOR1& _Vec ) const
+		{
+		return VECTOR1(X + _Vec.X);
+		}
+
+    VECTOR1 operator - ( const VECTOR1& _Vec ) const
+		{
+		return VECTOR1(X - _Vec.X);
+		}
+
+    VECTOR1 operator * ( FLOAT _Scale ) const
+		{
+		return VECTOR1(X * _Scale);
+		}
+
+    VECTOR1 operator / ( FLOAT _Scale ) const
+		{
+		return VECTOR1(X / _Scale);
+		}
+
+	
+	void Floor(int val)
+		{	// floor
+		X = ::floor(X / val + 0.5F) * val;
+		}
+
+	void Ceil(int val)
+		{	// ceil
+		X = ::ceil(X / val - 0.5F) * val;
+		}
+
+	// casting
+	operator FLOAT* ()
+		{
+		return &X;
+		}
+
+	operator const FLOAT* () const
+		{
+		return &X;
+		}
+
+	// math
+	void Zero()
+		{
+		X = 0;
+		}
+
+	FLOAT Magnitude() const
+		{	// in 1D vector`s magnitude = x-size
+		return X;
+		}
+
+	FLOAT AMagnitude() const
+		{	// mod magnitude
+		return abs(X);
+		}
+
+	FLOAT Distance( const VECTOR1& _Vec ) const
+		{	// distance between two vectors
+		return (_Vec - *this).Magnitude();
+		}
+
+	FLOAT ADistance( const VECTOR1& _Vec ) const
+		{	// distance between two vectors
+		return (_Vec - *this).AMagnitude();
+		}
+
+	void Normalize()
+		{
+		X = 1.0F;
+		}
+
+	VECTOR1	GetNormalized() const
+		{
+		return VECTOR1(1.0F);
+		}
+
+	void Perpendicular()
+		{	// in 1D: inverse only
+		X = -X;
+		}
+
+	VECTOR1	GetPerpendicular() const
+		{
+		return VECTOR1(-X);
+		}
+
+	VECTOR1	GetNormalizedPerpendicular() const
+		{
+		return VECTOR1(X < 0 ? 1.0F : -1.0F);
+		}
+
+	FLOAT operator | ( const VECTOR1& _Vec ) const
+		{	// 1D dot product
+		return X * _Vec.X;
+		}
+
+	VECTOR1& Lerp( FLOAT _Scale, const VECTOR1& _Vec )
+		{	// 1D linear interpolation
+		return *this = _Scale * (_Vec - *this);
+		}
+
+	void Snap()
+		{
+		X = (FLOAT)(int)X;
+		}
+
+	// friend utils
+	friend VECTOR1 abs( const VECTOR1& );
+	friend bool equal( const VECTOR1&, const VECTOR1& );
+	friend VECTOR1 Maximize( const VECTOR1&, const VECTOR1& );
+	friend VECTOR1 Minimize( const VECTOR1&, const VECTOR1& );
+	friend VECTOR1 Maximize( const VECTOR1*, const size_t );
+	friend VECTOR1 Minimize( const VECTOR1*, const size_t );
+    friend VECTOR1 operator * ( FLOAT, const VECTOR1& );
+    friend VECTOR1 operator / ( FLOAT, const VECTOR1& );
+
+
+	FLOAT X;
+	static const VECTOR1 O;
+};
+
+
+
+inline VECTOR1 abs( const VECTOR1& _Vec)
+	{	// absolyte vector value
+	return VECTOR1(abs(_Vec.X));
+	}
+
+inline bool equal( const VECTOR1& _Vec1, const VECTOR1& _Vec2 )
+	{	// real compare
+	return equal(_Vec1.X, _Vec2.X);
+	}
+
+inline VECTOR1 Maximize( const VECTOR1& _Vec1, const VECTOR1& _Vec2 )
+	{
+	return VECTOR1(_Vec1.X > _Vec2.X ? _Vec1.X : _Vec2.X);
+	}
+
+inline VECTOR1 Minimize( const VECTOR1& _Vec1, const VECTOR1& _Vec2 )
+	{
+	return VECTOR1(_Vec1.X < _Vec2.X ? _Vec1.X : _Vec2.X);
+	}
+
+inline VECTOR1 Maximize( const VECTOR1* _pVec, const size_t _Size )
+	{
+	VECTOR1 _XMax = _pVec[0];
+	for(size_t i = 1; i < _Size; ++i)
+		if (_pVec[i].X > _XMax.X)
+			_XMax.X = _pVec[i].X;
+
+	return _XMax;
+	}
+
+inline VECTOR1 Minimize( const VECTOR1* _pVec, const size_t _Size )
+	{
+	VECTOR1 _XMin = _pVec[0];
+	for(size_t i = 1; i < _Size; ++i)
+		if (_pVec[i].X < _XMin.X)
+			_XMin.X = _pVec[i].X;
+
+	return _XMin;
+	}
+
+inline VECTOR1 operator * ( FLOAT _Scale, const VECTOR1& _Vec )
+	{
+	return VECTOR1(_Vec.X * _Scale);
+	}
+
+inline VECTOR1 operator / ( FLOAT _Scale, const VECTOR1& _Vec )
+	{
+	return VECTOR1(_Vec.X ? _Scale / _Vec.X : 0);
+	}
+
+
+
+
+
+//=============================================================================
+//								  VECTOR2
+//=============================================================================
+
+struct VECTOR2
+{
+	VECTOR2()
+		{
+		}
+
+	explicit VECTOR2(FLOAT _Val)
+		: X(_Val), Y(_Val)
+		{
+		}
+
+	VECTOR2(FLOAT _X, FLOAT _Y)
+		: X(_X), Y(_Y)
+		{
+		}
+
+	explicit VECTOR2( const FLOAT* _pF)
+		{
+		X = _pF[0];
+		Y = _pF[1];
+		}
+
+	VECTOR2( const VECTOR2& _Start, const VECTOR2& _End )
+		: X(_End.X - _Start.X), Y(_End.Y - _Start.Y)
+		{
+		}
+
+	void operator ()(FLOAT _X, FLOAT _Y)
+		{	// reinit
+		X = _X; Y = _Y;
+		}
+
+	// assignment operators
+    VECTOR2& operator += ( const VECTOR2& _Vec )
+		{
+		X += _Vec.X;
+		Y += _Vec.Y;
+		return *this;
+		}
+
+    VECTOR2& operator -= ( const VECTOR2& _Vec )
+		{
+		X -= _Vec.X;
+		Y -= _Vec.Y;
+		return *this;
+		}
+
+    VECTOR2& operator *= ( FLOAT _Scale )
+		{
+		X *= _Scale;
+		Y *= _Scale;
+		return *this;
+		}
+
+    VECTOR2& operator /= ( FLOAT _Scale )
+		{
+		X /= _Scale;
+		Y /= _Scale;
+		return *this;
+		}
+
+	VECTOR2& operator *= ( const struct MATRIX6& );
+	VECTOR2& operator *= ( const struct MATRIX9& );
+
+
+    // unary operators
+    VECTOR2 operator + () const
+		{
+		return *this;
+		}
+
+    VECTOR2 operator - () const
+		{
+		return VECTOR2(-X, -Y);
+		}
+
+	// compare
+    bool operator == ( const VECTOR2& _Vec ) const
+		{
+		return X == _Vec.X && Y == _Vec.Y;
+		}
+
+    bool operator != ( const VECTOR2& _Vec ) const
+		{
+		return X != _Vec.X || Y != _Vec.Y;
+		}
+
+	bool isZero() const
+		{
+		return X == 0 && Y == 0;
+		}
+
+	bool isFZero() const
+		{
+		return equal(X, 0) && equal(Y, 0);
+		}
+
+	bool isFHasZero() const
+		{
+		return equal(X, 0) || equal(Y, 0);
+		}
+
+	// gab test
+		// strong (X && Y)
+    bool operator < ( const VECTOR2& _Vec ) const
+		{
+		return X < _Vec.X && Y < _Vec.Y;
+		}
+
+    bool operator <= ( const VECTOR2& _Vec ) const
+		{
+		return X <= _Vec.X && Y <= _Vec.Y;
+		}
+
+    bool operator > ( const VECTOR2& _Vec ) const
+		{
+		return X > _Vec.X && Y > _Vec.Y;
+		}
+
+    bool operator >= ( const VECTOR2& _Vec ) const
+		{
+		return X >= _Vec.X && Y >= _Vec.Y;
+		}
+
+
+		// non-strong (X || Y) (for bbox checking)
+    bool operator << ( const VECTOR2& _Vec ) const
+		{
+		return X < _Vec.X || Y < _Vec.Y;
+		}
+
+    bool operator <<= ( const VECTOR2& _Vec ) const
+		{
+		return X <= _Vec.X || Y <= _Vec.Y;
+		}
+
+    bool operator >> ( const VECTOR2& _Vec ) const
+		{
+		return X > _Vec.X || Y > _Vec.Y;
+		}
+
+    bool operator >>= ( const VECTOR2& _Vec ) const
+		{
+		return X >= _Vec.X || Y >= _Vec.Y;
+		}
+
+    // binary operators
+    VECTOR2 operator + ( const VECTOR2& _Vec ) const
+		{
+		return VECTOR2(X + _Vec.X, Y + _Vec.Y);
+		}
+
+    VECTOR2 operator - ( const VECTOR2& _Vec ) const
+		{
+		return VECTOR2(X - _Vec.X, Y - _Vec.Y);
+		}
+
+    VECTOR2 operator * ( FLOAT _Scale ) const
+		{
+		return VECTOR2(X * _Scale, Y * _Scale);
+		}
+
+    VECTOR2 operator / ( FLOAT _Scale ) const
+		{
+		return VECTOR2(X / _Scale, Y / _Scale);
+		}
+
+	VECTOR2 operator * ( const struct MATRIX6& ) const;
+	VECTOR2 operator * ( const struct MATRIX9& ) const;
+
+	void Floor(int val)
+		{	// floor
+		X = ::floor(X / val + 0.5F) * val;
+		Y = ::floor(Y / val + 0.5F) * val;
+		}
+
+	void Ceil(int val)
+		{	// ceil
+		X = ::ceil(X / val - 0.5F) * val;
+		Y = ::ceil(Y / val - 0.5F) * val;
+		}
+
+	void Swap()
+		{	// swap vector components
+		FLOAT tmp;
+		tmp = X, X = Y, Y = tmp;
+		}
+
+	// casting
+	operator FLOAT* ()
+		{
+		return &X;
+		}
+
+	operator const FLOAT* () const
+		{
+		return &X;
+		}
+
+	// math
+	void Zero()
+		{
+		X = Y = 0;
+		}
+
+	void STShiftRound(int texwidth, int texheight, float sinv)
+		{
+			// S/T-shift round
+			if(S >= texwidth || S <= -texwidth)
+				S = (::modf(S, &sinv)) + (int)sinv % texwidth;
+			if(T >= texheight || T <= -texheight)
+				T = (::modf(T, &sinv)) + (int)sinv % texheight;
+		}
+
+	// projection
+	VECTOR1 ProjectX() const
+		{
+		return VECTOR1(X);
+		}
+
+	VECTOR1 ProjectY() const
+		{
+		return VECTOR1(Y);
+		}
+
+	VECTOR1 Project(unsigned dim) const
+		{
+		return VECTOR1((*this)[dim]);
+		}
+
+	FLOAT Magnitude() const
+		{
+		return ::sqrt(X * X + Y * Y);
+		}
+
+	FLOAT MagnitudeSq() const
+		{
+		return X * X + Y * Y;
+		}
+
+	FLOAT Distance( const VECTOR2& _Vec ) const
+		{
+		return (_Vec - *this).Magnitude();
+		}
+
+	FLOAT DistanceSq( const VECTOR2& _Vec ) const
+		{
+		return (_Vec - *this).MagnitudeSq();
+		}
+
+	void Normalize()
+		{
+		FLOAT mag = ::sqrt(X * X + Y * Y);
+		if(mag)
+		{
+			mag = 1 / mag;
+			X *= mag;
+			Y *= mag;
+		}
+		}
+
+	VECTOR2	GetNormalized() const
+		{
+		VECTOR2 ret(*this);
+		ret.Normalize();
+		return ret;
+		}
+
+	void Perpendicular()
+		{	/* tmp = X, X = Y, Y = -tmp; */
+		__asm mov	eax, this
+		__asm finit
+		__asm fld	[eax + 4]
+		__asm fld	[eax]
+		__asm fchs
+		__asm fstp	[eax + 4]
+		__asm fstp	[eax]
+		}
+
+	VECTOR2	GetPerpendicular() const
+		{
+		return VECTOR2(Y, -X);
+		}
+
+	void RevPerpendicular()
+		{	/* tmp = X, X = -Y, Y = tmp; */
+		__asm mov	eax, this
+		__asm finit
+		__asm fld	[eax]
+		__asm fld	[eax + 4]
+		__asm fchs
+		__asm fstp	[eax]
+		__asm fstp	[eax + 4]
+		}
+
+	VECTOR2	GetRevPerpendicular() const
+		{
+		return VECTOR2(-Y, X);
+		}
+
+	VECTOR2	GetNormalizedPerpendicular() const
+		{
+		VECTOR2 ret(Y, -X);
+		ret.Normalize();
+		return ret;
+		}
+
+	VECTOR2	GetNormalizedRevPerpendicular() const
+		{
+		VECTOR2 ret(-Y, X);
+		ret.Normalize();
+		return ret;
+		}
+
+	FLOAT operator | ( const VECTOR2& _Vec ) const
+		{
+		return X * _Vec.X + Y * _Vec.Y;
+		}
+
+	FLOAT operator ^ ( const VECTOR2& _Vec ) const
+		{
+		return X * _Vec.Y - Y * _Vec.X;
+		}
+
+	VECTOR2& Lerp( FLOAT _Scale, const VECTOR2& _Vec )
+		{
+		return *this = _Scale * (_Vec - *this);
+		}
+	
+	void Snap()
+		{
+		X = (FLOAT)(int)X;
+		Y = (FLOAT)(int)Y;
+		}
+
+    VECTOR2& BaryCentric(const VECTOR2& _Vec1, const VECTOR2& _Vec2, const VECTOR2& _Vec3,
+						 FLOAT f, FLOAT g)
+		{
+		return *this = _Vec1 + f * (_Vec2 - _Vec1) + g * (_Vec3 - _Vec1);
+		}
+
+	void NScale(FLOAT _XScale, FLOAT _YScale)			
+		{	// non-uniformal scale
+		X *= _XScale,
+		Y *= _YScale;
+		}
+
+	VECTOR2 GetNScale(FLOAT _XScale, FLOAT _YScale) const
+		{	// non-uniformal scale
+		return VECTOR2(X * _XScale, Y * _YScale);
+		}
+
+	// friend utils
+	friend VECTOR2 abs( const VECTOR2& );
+	friend bool equal( const VECTOR2&, const VECTOR2& );
+
+	friend VECTOR2 Maximize( const VECTOR2&, const VECTOR2& );
+	friend VECTOR2 Minimize( const VECTOR2&, const VECTOR2& );
+	friend VECTOR2 Maximize( const VECTOR2*, size_t );
+	friend VECTOR2 Minimize( const VECTOR2*, size_t );
+    friend VECTOR2 operator * ( FLOAT, const VECTOR2& );
+    friend VECTOR2 operator / ( FLOAT, const VECTOR2& );
+
+
+	union {
+		struct { FLOAT X, Y; };
+		struct { FLOAT S, T; };
+		struct { FLOAT PITCH, YAW; };
+	};
+
+	static const VECTOR2 O, OX, OY, Q1, Q2, Q3, Q4, I;
+};
+
+
+
+
+inline bool isOrthogonal( const VECTOR2& _Vec1, const VECTOR2& _Vec2 )
+	{
+	return (_Vec1 | _Vec2) == 0;
+	}
+
+inline bool isFOrthogonal( const VECTOR2& _Vec1, const VECTOR2& _Vec2 )
+	{
+	return equal(_Vec1 | _Vec2, 0);
+	}
+
+inline bool isParallel( const VECTOR2& _Vec1, const VECTOR2& _Vec2 )
+	{
+	return (_Vec1 ^ _Vec2) == 0;
+	}
+
+inline bool isFParallel( const VECTOR2& _Vec1, const VECTOR2& _Vec2 )
+	{
+	return equal(_Vec1 ^ _Vec2, 0);
+	}
+
+inline VECTOR2 abs( const VECTOR2& _Vec)
+	{
+	return VECTOR2(abs(_Vec.X), abs(_Vec.Y));
+	}
+
+inline bool equal( const VECTOR2& _Vec1, const VECTOR2& _Vec2 )
+	{
+	return equal(_Vec1.X, _Vec2.X) && equal(_Vec1.Y, _Vec2.Y);
+	}
+
+inline VECTOR2 Maximize( const VECTOR2& _Vec1, const VECTOR2& _Vec2 )
+	{
+	return VECTOR2( _Vec1.X > _Vec2.X ? _Vec1.X : _Vec2.X,
+					_Vec1.Y > _Vec2.Y ? _Vec1.Y : _Vec2.Y );
+	}
+
+inline VECTOR2 Minimize( const VECTOR2& _Vec1, const VECTOR2& _Vec2 )
+	{
+	return VECTOR2( _Vec1.X < _Vec2.X ? _Vec1.X : _Vec2.X,
+					_Vec1.Y < _Vec2.Y ? _Vec1.Y : _Vec2.Y );
+	}
+
+inline VECTOR2 Maximize( const VECTOR2* _pVec, size_t _Size )
+	{
+	VECTOR2 _XYMax = _pVec[0];
+	for(size_t i = 1; i < _Size; ++i)
+	{
+		if (_pVec[i].X > _XYMax.X)
+			_XYMax.X = _pVec[i].X;
+		if (_pVec[i].Y > _XYMax.Y)
+			_XYMax.Y = _pVec[i].Y;
+	}
+
+	return _XYMax;
+	}
+
+inline VECTOR2 Minimize( const VECTOR2* _pVec, size_t _Size )
+	{
+	VECTOR2 _XYMin = _pVec[0];
+	for(size_t i = 1; i < _Size; ++i)
+	{
+		if (_pVec[i].X < _XYMin.X)
+			_XYMin.X = _pVec[i].X;
+		if (_pVec[i].Y < _XYMin.Y)
+			_XYMin.Y = _pVec[i].Y;
+	}
+
+	return _XYMin;
+	}
+
+inline VECTOR2 operator * ( FLOAT _Scale, const VECTOR2& _Vec )
+	{
+	return VECTOR2(_Vec.X * _Scale, _Vec.Y * _Scale);
+	}
+
+inline VECTOR2 operator / ( FLOAT _Scale, const VECTOR2& _Vec )
+	{
+	return VECTOR2(_Vec.X ? _Scale / _Vec.X : 0, _Vec.Y ? _Scale / _Vec.Y : 0);
+	}
+
+
+
+
+
+//=============================================================================
+//								  VECTOR3
+//=============================================================================
+
+enum eProjectPlane {
+	/* correspond to enum VIEWMODE */
+	PP_FRONT, PP_XY = PP_FRONT,
+	PP_LEFT, PP_ZY = PP_LEFT,
+	PP_BOTTOM, PP_XZ = PP_BOTTOM,
+	PP_BACK,
+	PP_RIGHT,
+	PP_TOP,
+	  PP_TOTAL
+};
+
+
+struct VECTOR3
+{
+	VECTOR3()
+		{
+		}
+
+	explicit VECTOR3( FLOAT _Val )
+		: X(_Val), Y(_Val), Z(_Val)
+		{
+		}
+
+	VECTOR3( FLOAT _X, FLOAT _Y, FLOAT _Z )
+		: X(_X), Y(_Y), Z(_Z)
+		{
+		}
+
+	explicit VECTOR3( const FLOAT* _pF )
+		{
+		X = _pF[0];
+		Y = _pF[1];
+		Z = _pF[2];
+		}
+
+	VECTOR3( const VECTOR3& _Start, const VECTOR3& _End )
+		: X(_End.X - _Start.X),
+		  Y(_End.Y - _Start.Y),
+		  Z(_End.Z - _Start.Z)
+		{
+		}
+
+	VECTOR3(const VECTOR2& v, unsigned/*eProjectPlane*/ epp, FLOAT threed = 0)
+		{	// vector2 expand & proj
+			switch(epp)
+			{
+			case PP_FRONT:
+			case PP_BACK:
+				X = v.X; Y = v.Y; Z = threed;
+				break;
+			case PP_LEFT:
+			case PP_RIGHT:
+				X = threed; Y = v.Y; Z = v.X;
+				break;
+			//case PP_BOTTOM:
+			//case PP_TOP:
+			default:
+				X = v.X; Y = threed; Z = v.Y;
+				break;
+			}
+		}
+
+	VECTOR3(const VECTOR2& v, unsigned d1, unsigned d2, FLOAT threed = 0)
+		{
+			(&X)[d1] = v.X;
+			(&X)[d2] = v.Y;
+			(&X)[3-d1-d2] = threed;
+		}
+
+	void operator ()(FLOAT _X, FLOAT _Y, FLOAT _Z)
+		{	// reinit
+		X = _X; Y = _Y; Z = _Z;
+		}
+
+	// assignment operators
+    VECTOR3& operator += ( const VECTOR3& _Vec )
+		{
+		X += _Vec.X;
+		Y += _Vec.Y;
+		Z += _Vec.Z;
+		return *this;
+		}
+
+    VECTOR3& operator -= ( const VECTOR3& _Vec )
+		{
+		X -= _Vec.X;
+		Y -= _Vec.Y;
+		Z -= _Vec.Z;
+		return *this;
+		}
+
+    VECTOR3& operator *= ( FLOAT _Scale )
+		{
+		X *= _Scale;
+		Y *= _Scale;
+		Z *= _Scale;
+		return *this;
+		}
+
+    VECTOR3& operator *= ( const VECTOR3& _Vec )
+		{
+		X *= _Vec.X;
+		Y *= _Vec.Y;
+		Z *= _Vec.Z;
+		return *this;
+		}
+
+    VECTOR3& operator /= ( FLOAT _Scale )
+		{
+		X /= _Scale;
+		Y /= _Scale;
+		Z /= _Scale;
+		return *this;
+		}
+
+    VECTOR3& operator /= ( const VECTOR3& _Vec )
+		{
+		X /= _Vec.X;
+		Y /= _Vec.Y;
+		Z /= _Vec.Z;
+		return *this;
+		}
+
+	VECTOR3& operator *= ( const struct MATRIX16& );
+	void Rotate( const struct MATRIX16& );
+	void Translate( const struct MATRIX16& );
+
+
+    // unary operators
+    VECTOR3 operator + () const
+		{
+		return *this;
+		}
+
+    VECTOR3 operator - () const
+		{
+		return VECTOR3(-X, -Y, -Z);
+		}
+
+	// compare
+    bool operator == ( const VECTOR3& _Vec ) const
+		{
+		return X == _Vec.X && Y == _Vec.Y && Z == _Vec.Z;
+		}
+
+    bool operator != ( const VECTOR3& _Vec ) const
+		{
+		return X != _Vec.X || Y != _Vec.Y || Z != _Vec.Z;
+		}
+
+	bool isZero() const
+		{
+		return X == 0 && Y == 0 && Z == 0;
+		}
+
+	bool isFZero() const
+		{
+		return equal(X, 0) && equal(Y, 0) && equal(Z, 0);
+		}
+
+	bool isFHasZero() const
+		{
+		return equal(X, 0) || equal(Y, 0) || equal(Z, 0);
+		}
+
+	// gab test
+		// strong (X && Y)
+    bool operator < ( const VECTOR3& _Vec ) const
+		{
+		return X < _Vec.X && Y < _Vec.Y && Z < _Vec.Z;
+		}
+
+    bool operator <= ( const VECTOR3& _Vec ) const
+		{
+		return X <= _Vec.X && Y <= _Vec.Y && Z <= _Vec.Z;
+		}
+
+    bool operator > ( const VECTOR3& _Vec ) const
+		{
+		return X > _Vec.X && Y > _Vec.Y && Z > _Vec.Z;
+		}
+
+    bool operator >= ( const VECTOR3& _Vec ) const
+		{
+		return X >= _Vec.X && Y >= _Vec.Y && Z >= _Vec.Z;
+		}
+
+
+		// non-strong (X || Y)
+    bool operator << ( const VECTOR3& _Vec ) const
+		{
+		return X < _Vec.X || Y < _Vec.Y || Z < _Vec.Z;
+		}
+
+    bool operator <<= ( const VECTOR3& _Vec ) const
+		{
+		return X <= _Vec.X || Y <= _Vec.Y || Z <= _Vec.Z;
+		}
+
+    bool operator >> ( const VECTOR3& _Vec ) const
+		{
+		return X > _Vec.X || Y > _Vec.Y || Z > _Vec.Z;
+		}
+
+    bool operator >>= ( const VECTOR3& _Vec ) const
+		{
+		return X >= _Vec.X || Y >= _Vec.Y || Z >= _Vec.Z;
+		}
+
+    // binary operators
+    VECTOR3 operator + ( const VECTOR3& _Vec ) const
+		{
+		return VECTOR3(X + _Vec.X, Y + _Vec.Y, Z + _Vec.Z);
+		}
+
+    VECTOR3 operator - ( const VECTOR3& _Vec ) const
+		{
+		return VECTOR3(X - _Vec.X, Y - _Vec.Y, Z - _Vec.Z);
+		}
+
+    VECTOR3 operator * ( FLOAT _Scale ) const
+		{
+		return VECTOR3(X * _Scale, Y * _Scale, Z * _Scale);
+		}
+
+    VECTOR3 operator / ( FLOAT _Scale ) const
+		{
+		return VECTOR3(X / _Scale, Y / _Scale, Z / _Scale);
+		}
+
+    VECTOR3 operator * ( const VECTOR3& _Vec ) const
+		{
+		return VECTOR3(X * _Vec.X, Y * _Vec.Y, Z * _Vec.Z);
+		}
+
+    VECTOR3 operator / ( const VECTOR3& _Vec ) const
+		{
+		return VECTOR3(X / _Vec.X, Y / _Vec.Y, Z / _Vec.Z);
+		}
+
+	VECTOR3 operator * ( const struct MATRIX16& ) const;
+
+	// casting
+	operator FLOAT* ()
+		{
+		return &X;
+		}
+
+	operator const FLOAT* () const
+		{
+		return &X;
+		}
+
+	// math
+	void Floor(int val)
+		{	// floor
+		X = ::floor(X / val + 0.5F) * val;
+		Y = ::floor(Y / val + 0.5F) * val;
+		Z = ::floor(Z / val + 0.5F) * val;
+		}
+
+	void Ceil(int val)
+		{	// ceil
+		X = ::ceil(X / val - 0.5F) * val;
+		Y = ::ceil(Y / val - 0.5F) * val;
+		Z = ::ceil(Z / val - 0.5F) * val;
+		}
+
+	void Zero()
+		{
+		X = Y = Z = 0;
+		}
+
+
+	//void Round(int texwidth, int texheight, float sinv, unsigned d1, unsigned d2)
+	//	{
+	//		Normalize();
+	//		*this *= max(texwidth, texheight);
+	//	}
+
+	VECTOR2 ProjectXY() const
+		{
+		return VECTOR2(X, Y);
+		}
+
+	VECTOR2 ProjectXZ() const
+		{
+		return VECTOR2(X, Z);
+		}
+
+	VECTOR2 ProjectZY() const
+		{
+		return VECTOR2(Z, Y);
+		}
+
+	VECTOR2 Project(unsigned dim1, unsigned dim2) const
+		{
+		return VECTOR2((*this)[dim1], (*this)[dim2]);
+		}
+
+	VECTOR2 Project(eProjectPlane epp) const
+		{
+		typedef VECTOR2 (VECTOR3::*PROJECTTYPEMEMFUN)() const;
+		static const PROJECTTYPEMEMFUN ptmf[PP_TOTAL] = {
+			&VECTOR3::ProjectXY,
+			&VECTOR3::ProjectZY,
+			&VECTOR3::ProjectXZ,
+			&VECTOR3::ProjectXY,
+			&VECTOR3::ProjectZY,
+			&VECTOR3::ProjectXZ
+		};
+
+		return (this->*ptmf[epp])();		// :ATTENTION: some optimization ;)
+		/*
+		switch(epp)
+		{
+		case PP_FRONT:
+		case PP_BACK:
+			return VECTOR2(X, Y);
+		case PP_LEFT:
+		case PP_RIGHT:
+			return VECTOR2(Z, Y);
+		//case PP_BOTTOM:
+		//case PP_TOP:
+		default:
+			return VECTOR2(X, Z);
+		}
+		*/
+		}
+
+	void Floor(eProjectPlane epp, int val)
+		{
+			switch(epp)
+			{
+			case PP_FRONT:
+			case PP_BACK:
+				X = ::floor(X / val + 0.5F) * val;
+				Y = ::floor(Y / val + 0.5F) * val;
+				break;
+			case PP_LEFT:
+			case PP_RIGHT:
+				Y = ::floor(Y / val + 0.5F) * val;
+				Z = ::floor(Z / val + 0.5F) * val;
+				break;
+			//case PP_BOTTOM:
+			//case PP_TOP:
+			default:
+				X = ::floor(X / val + 0.5F) * val;
+				Z = ::floor(Z / val + 0.5F) * val;
+				break;
+			}
+		}
+
+	void Ceil(eProjectPlane epp, int val)
+		{
+			switch(epp)
+			{
+			case PP_FRONT:
+			case PP_BACK:
+				X = ::ceil(X / val - 0.5F) * val;
+				Y = ::ceil(Y / val - 0.5F) * val;
+				break;
+			case PP_LEFT:
+			case PP_RIGHT:
+				Y = ::ceil(Y / val - 0.5F) * val;
+				Z = ::ceil(Z / val - 0.5F) * val;
+				break;
+			//case PP_BOTTOM:
+			//case PP_TOP:
+			default:
+				X = ::ceil(X / val - 0.5F) * val;
+				Z = ::ceil(Z / val - 0.5F) * val;
+				break;
+			}
+		}
+
+	FLOAT Magnitude() const
+		{
+			return ::sqrt(X * X + Y * Y + Z * Z);
+		}
+
+	FLOAT MagnitudeSq() const
+		{
+		return X * X + Y * Y + Z * Z;
+		}
+
+	FLOAT Distance( const VECTOR3& _Vec ) const
+		{
+		return (_Vec - *this).Magnitude();
+		}
+
+	FLOAT DistanceSq( const VECTOR3& _Vec ) const
+		{
+		return (_Vec - *this).MagnitudeSq();
+		}
+
+	void Normalize()
+		{
+		FLOAT mag = ::sqrt(X * X + Y * Y + Z * Z);
+		if(mag)
+		{
+			mag = 1 / mag;
+			X *= mag;
+			Y *= mag;
+			Z *= mag;
+		}
+		}
+
+	VECTOR3	GetNormalized() const
+		{
+		VECTOR3 ret(*this);
+		ret.Normalize();
+		return ret;
+		}
+
+	void Perpendicular()
+		{
+		unsigned pos = 0;
+		FLOAT minelem = 1.0F;
+
+		// find the smallest magnitude axially aligned vector
+		if(abs(X) < minelem) pos = 0, minelem = abs(X);
+		if(abs(Y) < minelem) pos = 1, minelem = abs(Y);
+		if(abs(Z) < minelem) pos = 2, minelem = abs(Z);
+
+		switch(pos)
+			{
+			case 0: *this = VECTOR3(0, -Z, Y); break;
+			case 1: *this = VECTOR3(-Z, 0, X); break;
+			case 2: *this = VECTOR3(-Y, X, 0); break;
+			}
+		}
+
+	VECTOR3	GetPerpendicular() const
+		{
+		VECTOR3 ret(*this);
+		ret.Perpendicular();
+		return ret;
+		}
+
+	void RevPerpendicular()
+		{
+		unsigned pos = 0;
+		FLOAT minelem = 1.0F;
+
+		// find the smallest magnitude axially aligned vector
+		if(abs(X) < minelem) pos = 0, minelem = abs(X);
+		if(abs(Y) < minelem) pos = 1, minelem = abs(Y);
+		if(abs(Z) < minelem) pos = 2, minelem = abs(Z);
+
+		switch(pos)
+			{
+			case 0: *this = VECTOR3(0, Z, -Y); break;
+			case 1: *this = VECTOR3(Z, 0, -X); break;
+			case 2: *this = VECTOR3(Y, -X, 0); break;
+			}
+		}
+
+	VECTOR3	GetRevPerpendicular() const
+		{
+		VECTOR3 ret(*this);
+		ret.RevPerpendicular();
+		return ret;
+		}
+
+	VECTOR3	GetNormalizedPerpendicular() const
+		{
+		VECTOR3 ret(*this);
+		ret.Perpendicular();
+		ret.Normalize();
+		return ret;
+		}
+
+	VECTOR3	GetNormalizedRevPerpendicular() const
+		{
+		VECTOR3 ret(*this);
+		ret.RevPerpendicular();
+		ret.Normalize();
+		return ret;
+		}
+
+	FLOAT operator | ( const VECTOR3& _Vec ) const
+		{	// dot
+		return	X * _Vec.X + Y * _Vec.Y + Z * _Vec.Z;
+		}
+
+	VECTOR3 operator ^ ( const VECTOR3& _Vec ) const
+		{	// cross
+		return	VECTOR3(Y * _Vec.Z - Z * _Vec.Y,
+						Z * _Vec.X - X * _Vec.Z,
+						X * _Vec.Y - Y * _Vec.X);
+		}
+
+	VECTOR3& operator ^= ( const VECTOR3& _Vec )
+		{	// cross
+		return *this =	VECTOR3(Y * _Vec.Z - Z * _Vec.Y,
+								Z * _Vec.X - X * _Vec.Z,
+								X * _Vec.Y - Y * _Vec.X);
+		}
+
+	VECTOR3& Lerp( FLOAT _Scale, const VECTOR3& _Vec )
+		{
+		return *this = _Scale * (_Vec - *this);
+		}
+
+	void Translate(const VECTOR2& v, unsigned projplane)
+		{
+			switch(projplane)
+			{
+			case 0:	X += v[0]; Y += v[1]; break;	// XY
+			case 1:	Y += v[1]; Z += v[2]; break;	// ZY
+			default:X += v[0]; Z += v[2]; break;	// XZ
+			}
+		}
+	
+	void Snap()
+		{
+		X = (FLOAT)(int)X,
+		Y = (FLOAT)(int)Y,
+		Z = (FLOAT)(int)Z;
+		}
+
+    VECTOR3& BaryCentric( const VECTOR3& _Vec1, const VECTOR3& _Vec2, const VECTOR3& _Vec3,
+						  FLOAT f, FLOAT g )
+		{
+		return *this = _Vec1 + f * (_Vec2 - _Vec1) + g * (_Vec3 - _Vec1);
+		}
+
+	void NScale( FLOAT _XScale, FLOAT _YScale, FLOAT _ZScale )			
+		{	// non-uniformal scale
+		X *= _XScale,
+		Y *= _YScale,
+		Z *= _ZScale;
+		}
+
+	VECTOR3 GetNScale( FLOAT _XScale, FLOAT _YScale, FLOAT _ZScale ) const
+		{	// non-uniformal scale
+		return VECTOR3(X * _XScale, Y * _YScale, Z * _ZScale);
+		}
+
+
+	// friend utils
+	friend VECTOR3 abs( const VECTOR3& );
+	friend bool equal( const VECTOR3&, const VECTOR3& );
+	friend VECTOR3 Maximize( const VECTOR3&, const VECTOR3& );
+	friend VECTOR3 Minimize( const VECTOR3&, const VECTOR3& );
+	friend VECTOR3 Maximize( const VECTOR3*, size_t );
+	friend VECTOR3 Minimize( const VECTOR3*, size_t );
+	friend VECTOR2 Maximize( const VECTOR3*, size_t, unsigned, unsigned );
+	friend VECTOR2 Minimize( const VECTOR3*, size_t, unsigned, unsigned );
+    friend VECTOR3 operator * ( FLOAT, const VECTOR3& );
+    friend VECTOR3 operator / ( FLOAT, const VECTOR3& );
+
+
+	union {
+		struct { FLOAT X, Y, Z; };
+		struct { FLOAT S, T, R; };
+		struct { FLOAT PITCH, YAW, ROLL; };
+	};
+
+	static const VECTOR3 O, OX, OY, OZ, NOX, NOY, NOZ, I, /*NVIEW[6],*/ INVIEW[6];
+};
+
+
+inline bool isOrthogonal( const VECTOR3& _Vec1, const VECTOR3& _Vec2 )
+	{
+	return (_Vec1 | _Vec2) == 0;
+	}
+
+inline bool isFOrthogonal( const VECTOR3& _Vec1, const VECTOR3& _Vec2 )
+	{
+	return equal(_Vec1 | _Vec2, 0);
+	}
+
+inline bool isParallel( const VECTOR3& _Vec1, const VECTOR3& _Vec2 )
+	{
+	return (_Vec1 ^ _Vec2).isZero();
+	}
+
+inline bool isFParallel( const VECTOR3& _Vec1, const VECTOR3& _Vec2 )
+	{
+	return (_Vec1 ^ _Vec2).isFZero();
+	}
+
+inline VECTOR3 abs( const VECTOR3& _Vec)
+	{
+	return VECTOR3(abs(_Vec.X), abs(_Vec.Y), abs(_Vec.Z));
+	}
+
+inline bool equal( const VECTOR3& _Vec1, const VECTOR3& _Vec2 )
+	{
+	return	equal(_Vec1.X, _Vec2.X) &&
+			equal(_Vec1.Y, _Vec2.Y) &&
+			equal(_Vec1.Z, _Vec2.Z);
+	}
+
+inline VECTOR3 Maximize( const VECTOR3& _Vec1, const VECTOR3& _Vec2 )
+	{
+	return	VECTOR3(_Vec1.X > _Vec2.X ? _Vec1.X : _Vec2.X,
+					_Vec1.Y > _Vec2.Y ? _Vec1.Y : _Vec2.Y,
+					_Vec1.Z > _Vec2.Z ? _Vec1.Z : _Vec2.Z);
+	}
+
+inline VECTOR3 Minimize( const VECTOR3& _Vec1, const VECTOR3& _Vec2 )
+	{
+	return	VECTOR3(_Vec1.X < _Vec2.X ? _Vec1.X : _Vec2.X,
+					_Vec1.Y < _Vec2.Y ? _Vec1.Y : _Vec2.Y,
+					_Vec1.Z < _Vec2.Z ? _Vec1.Z : _Vec2.Z);
+	}
+
+inline VECTOR3 Maximize( const VECTOR3* _pVec, size_t _Size )
+	{
+	VECTOR3 _XYZMax = _pVec[0];
+	for(size_t i = 1; i < _Size; ++i)
+	{
+		if(_pVec[i].X > _XYZMax.X)
+			_XYZMax.X = _pVec[i].X;
+		if(_pVec[i].Y > _XYZMax.Y)
+			_XYZMax.Y = _pVec[i].Y;
+		if(_pVec[i].Z > _XYZMax.Z)
+			_XYZMax.Z = _pVec[i].Z;
+	}
+
+	return _XYZMax;
+	}
+
+inline VECTOR3 Minimize( const VECTOR3* _pVec, size_t _Size )
+	{
+	VECTOR3 _XYZMin = _pVec[0];
+	for(size_t i = 1; i < _Size; ++i)
+	{
+		if(_pVec[i].X < _XYZMin.X)
+			_XYZMin.X = _pVec[i].X;
+		if(_pVec[i].Y < _XYZMin.Y)
+			_XYZMin.Y = _pVec[i].Y;
+		if(_pVec[i].Z < _XYZMin.Z)
+			_XYZMin.Z = _pVec[i].Z;
+	}
+
+	return _XYZMin;
+	}
+
+inline VECTOR3 operator * ( FLOAT _Scale, const VECTOR3& _Vec )
+	{
+	return	VECTOR3(_Vec.X * _Scale, _Vec.Y * _Scale, _Vec.Z * _Scale);
+	}
+
+inline VECTOR3 operator / ( FLOAT _Scale, const VECTOR3& _Vec )
+	{
+	return	VECTOR3(_Vec.X ? _Scale / _Vec.X : 0,
+					_Vec.Y ? _Scale / _Vec.Y : 0,
+					_Vec.Z ? _Scale / _Vec.Z : 0);
+	}
+
+
+// generic maximize/minimize
+inline void Maximize( FLOAT* _pMax,
+					  const FLOAT* _pVList, size_t _VListSize,
+					  size_t _VecSize, size_t _Offset )
+	{
+	size_t i;
+	for(i = 0; i < _VecSize; ++i)
+		_pMax[i] = _pVList[i];
+
+	for(i += _Offset; i < _VListSize; i += _VecSize + _Offset)
+		for(size_t j = 0; j < _VecSize; ++j)
+			if(_pVList[i + j] > _pMax[j])
+				_pMax[j] = _pVList[i + j];
+	}
+
+inline void Minimize( FLOAT* _pMin,
+					  const FLOAT* _pVList, size_t _VListSize,
+					  size_t _VecSize, size_t _Offset )
+	{
+	size_t i;
+	for(i = 0; i < _VecSize; ++i)
+		_pMin[i] = _pVList[i];
+
+	for(i += _Offset; i < _VListSize; i += _VecSize + _Offset)
+		for(size_t j = 0; j < _VecSize; ++j)
+			if(_pVList[i + j] > _pMin[j])
+				_pMin[j] = _pVList[i + j];
+	}
+
+
+inline VECTOR2 Maximize( const VECTOR3* _pVec, size_t _Size, unsigned d1, unsigned d2 )
+	{
+	VECTOR2 _XYZMax(_pVec[0][d1], _pVec[0][d2]);
+	for(size_t i = 1; i < _Size; ++i)
+	{
+		if(_pVec[i][d1] > _XYZMax.X) _XYZMax.X = _pVec[i][d1];
+		if(_pVec[i][d2] > _XYZMax.Y) _XYZMax.Y = _pVec[i][d2];
+	}
+
+	return _XYZMax;
+	}
+
+inline VECTOR2 Minimize( const VECTOR3* _pVec, size_t _Size, unsigned d1, unsigned d2 )
+	{
+	VECTOR2 _XYZMin(_pVec[0][d1], _pVec[0][d2]);
+	for(size_t i = 1; i < _Size; ++i)
+	{
+		if(_pVec[i][d1] < _XYZMin.X) _XYZMin.X = _pVec[i][d1];
+		if(_pVec[i][d2] < _XYZMin.Y) _XYZMin.Y = _pVec[i][d2];
+	}
+
+	return _XYZMin;
+	}
+
+
+
+
+//*************************************************************************
+//							  VECTOR UTILITES
+//*************************************************************************
+
+// orientation point p between line ab:
+// все точки p справа от прямой ab (т.е. со стороны ее нормали) дают положительные значения,
+// слева - отрицательные, на линии - нулевые
+inline int OrientationConv( const VECTOR2& A, const VECTOR2& B, const VECTOR2& P )
+	{
+	FLOAT dist = (P - A) ^ (B - A);
+	return	dist > 0 ? 1		// at right
+			: dist == 0 ? 0		// on line
+			: -1;				// at left
+	}
+
+// as some but return only dist value
+inline FLOAT Cross(const VECTOR2& A, const VECTOR2& B, const VECTOR2& P)
+	{
+	return (P - A) ^ (B - A);
+	}
+
+// check of three 2D points is collinear ?
+inline bool isCollinear(const VECTOR2& A, const VECTOR2& B, const VECTOR2& C)
+	{
+	return ((B - A) ^ (C - A)) == 0;
+	}
+
+// check of three 3D points is collinear ?
+inline bool isCollinear(const VECTOR3& A, const VECTOR3& B, const VECTOR3& C)
+	{
+	return (B - A ^ C - A).isZero();
+	}
+
+// check four points is complanar ?
+inline bool isComplanar(const VECTOR3& A, const VECTOR3& B,
+						const VECTOR3& C, const VECTOR3& D)
+	{
+	return (B - A ^ C - A | D - A) == 0;
+	}
+
+
+
+/*
+===========================================================================
+	Routine:
+		GetIntersectionTime( const VECTOR2& a, const VECTOR2& b, const VECTOR2& p )
+
+	Description:
+		Get intersection time t (в каком отношении точка p делит отрезок ab).
+
+	Parameters:
+		a		- input point 1
+		b		- input point 2
+		p		- checked point
+
+	Return Values:
+		FLOAT time intersection
+
+	Remarks:
+		none
+===========================================================================
+*/
+inline FLOAT GetIntersectionTime( const VECTOR2& A, const VECTOR2& B, const VECTOR2& P )
+	{
+	VECTOR2 AB(B - A);
+	return ((P - A) | AB) / (AB | AB);
+	}
+
+
+/*
+===========================================================================
+	Routine:
+		Angle( const VECTOR2& AB, const VECTOR2& CD)
+
+	Description:
+		Get angle (in radians) between vectors
+
+	Parameters:
+		AB		= input vector 1
+		CD		= input vector 2
+
+	Return Values:
+		angle between vectors (in radians)
+
+	Remarks:
+		It is a corner of the shortest rotation from AB to CD on property
+		of scalar product of vectors. Unit of a corner is equal arccos
+		(Vnorm | Wnorm) and correct sign is defined(determined) on non-zero
+		sign of a continuant of a matrix d, constructed on these vectors.
+===========================================================================
+*/
+inline FLOAT Angle( const VECTOR2& AB, const VECTOR2& CD)
+	{
+	FLOAT angle = ::acos( (AB | CD) / (AB.Magnitude() * CD.Magnitude())),
+		  dist = AB ^ CD;
+	return dist != 0 ? SIGN(dist) * angle : angle;
+	}
+	
+inline FLOAT Angle( const VECTOR3& AB, const VECTOR3& CD)
+	{
+	return ::acos(AB.GetNormalized() | CD.GetNormalized());
+	}
+
+
+/*
+===========================================================================
+	Routine:
+		int CrossParm(const VECTOR2& a, const VECTOR2& b,
+					  const VECTOR2& c, const VECTOR2& d,
+					  FLOAT* t = 0, FLOAT* u = 0, VECTOR2* q = 0, bool strong = false)
+
+		int CrossImpl(const VECTOR2& a, const VECTOR2& b,
+					  const VECTOR2& c, const VECTOR2& d,
+					  FLOAT* t = 0, FLOAT* u = 0, VECTOR2* q = 0, bool strong = false)
+
+
+	Description:
+		Get ab, cd linesegm intersection time (t, u), intersection point (cross)
+
+	Parameters:
+		a, b	- start, end ab line segm
+		c, d	- start, end cd line segm
+		cross	- output intersection point
+
+	Return Values:
+		-1, если прямые отрезки параллельны (не пересекаются), или
+			совпадают (точка пересечения не определена)
+		0,	если непараллельные отрезки не пересекаются
+		1,	если отрезки касаются или пересекаются
+
+	Remarks:
+	1.	Когда ищется пересечение не бесконечных прямых, а их отрезков, то кроме проверки
+		непереллельности прямых необходимы дополнительные проверки:
+							0 <= t <= 1, 0 <= u <= 1.
+		принадлежности точки их пересечения одновременно обоим отрезкам.
+
+			V = b - a, M =	[d - c]
+							[  V  ],
+				if |M| = 0, return -1
+				[t u] = (c - a)[M]-1
+				cross = a + Vt
+
+				return	strong ? 
+						{0 < t < 1} && {0 < u < 1} :
+						{0 <= t <= 1} && {0 <= u <= 1}								
+
+	2.	strong	- линии КАСАЮЩИЕСЯ друг друга НЕ СЧИТАЮТСЯ пересекающимися!
+		
+===========================================================================
+*/
+inline 
+int CrossParm(const VECTOR2& a, const VECTOR2& b,
+			  const VECTOR2& c, const VECTOR2& d,
+			  FLOAT* t = 0, FLOAT* u = 0, VECTOR2* q = 0, bool strong = false)
+	{
+	VECTOR2 AB = b - a, DC = c - d, AC = c - a;
+	FLOAT det = AB ^ DC;
+	if(det == 0)											// if CD || AB
+		return -1;
+	
+	det = 1.0F/det;											//					-1
+	FLOAT tt =  AC.X * DC.Y*det - AC.Y * DC.X*det,			// [t u] = (c - a)[M]
+		  uu = -AC.X * AB.Y*det + AC.Y * AB.X*det;
+
+	if(t) *t = tt;
+	if(u) *u = uu;
+	if(q) *q = a + AB * tt;									// q = a + Vt
+	return	strong ?
+			tt > 0 && tt < 1 && uu > 0 && uu < 1 :
+			tt >= 0 && tt <= 1 && uu >= 0 && uu <= 1;		// check {0 <= t <= 1} && {0 <= u <= 1}
+	}
+	
+inline 
+int CrossImpl(const VECTOR2& a, const VECTOR2& b,
+			  const VECTOR2& c, const VECTOR2& d,
+			  FLOAT* t = 0, FLOAT* u = 0, VECTOR2* q = 0, bool strong = false)
+	{
+	VECTOR2 AB = b - a, CD = d - c;
+	FLOAT Fa = (a - c) ^ CD, Fb = (b - c) ^ CD,				// НФ точке a, b относительно CD
+		  Fc = (c - a) ^ AB, Fd = (d - a) ^ AB;				// НФ точке c, d относительно AB
+
+	if(Fc == Fd)											// if CD || AB
+		return -1;
+
+	FLOAT tt = Fa / (Fa - Fb), uu = Fc / (Fc - Fd);
+
+	if(t) *t = tt;
+	if(u) *u = uu;
+	if(q) *q = a + AB * tt;									// q = a + Vt
+	return	strong ?
+			tt > 0 && tt < 1 && uu > 0 && uu < 1 :
+			tt >= 0 && tt <= 1 && uu >= 0 && uu <= 1;		// check {0 <= t <= 1} && {0 <= u <= 1}
+	}
+
+inline float TriangleArea(const VECTOR2& a, const VECTOR2& b, const VECTOR2& c)
+	{
+	return 0.5F * (b - a ^ c - a);
+	}
+
+inline float TriangleArea(const VECTOR3& a, const VECTOR3& b, const VECTOR3& c)
+	{
+	const VECTOR3 AB(b - a), CD(c - a);
+	return 0.5F * AB.Magnitude() * CD.Magnitude() * ::sin(Angle(AB, CD));
+	}
+
+inline VECTOR2 TriangleCenter(const VECTOR2& a, const VECTOR2& b, const VECTOR2& c)
+	{
+	return (a + b + c)/3.0F;
+	}
+
+inline VECTOR3 TriangleCenter(const VECTOR3& a, const VECTOR3& b, const VECTOR3& c)
+	{
+	return (a + b + c)/3.0F;
+	}
+
+
+/*
+===========================================================================
+	Routine:
+		VECTOR2 V2_rand()
+		VECTOR3 V3_rand()
+		VECTOR2 V2e_rand()
+		VECTOR3 V3e_rand()
+
+	Description:
+		Get random (identity) vectors
+
+	Parameters:
+		a, b		- range for random-generator
+
+	Return Values:
+		random vector(2/3)
+
+	Remarks:
+
+===========================================================================
+*/
+inline 
+VECTOR2 V2_rand(long a, long b)
+	{	// get random vector
+	return VECTOR2((FLOAT)::L_rand(a, b), (FLOAT)::L_rand(a, b));
+	}
+
+inline 
+VECTOR2 V2e_rand()
+	{	// генератор единичного вектора на плоскости со
+		// случайным углом направления fi = rnd(2п)
+	FLOAT sinfi, cosfi;
+	::sincos(::F_rand(2.0F * FLT_PI), &sinfi, &cosfi);
+	return VECTOR2(cosfi, sinfi);
+	}
+
+inline 
+VECTOR3 V3_rand(long a, long b)
+	{	// get random vector
+	return VECTOR3((FLOAT)::L_rand(a, b), (FLOAT)::L_rand(a, b), (FLOAT)::L_rand(a, b));
+	}
+
+inline 
+VECTOR3 V3e_rand()
+	{	// генератор единичного вектора в пространстве со случайными
+		// углами места fi = rnd(2п) и азимута azmth = rnd(п)
+	FLOAT sinfi, cosfi, sinazmth, cosazmth;
+	::sincos(::F_rand(2.0F * FLT_PI), &sinfi, &cosfi);
+	::sincos(::F_rand(FLT_PI), &sinazmth, &cosazmth);
+	return VECTOR3(sinfi*sinazmth, cosazmth, cosfi*sinazmth);
+	}
+
+
+// TEXTURING
+extern const VECTOR3 TEXTUREAXIS[6][3];
+extern const unsigned BASEDIMS[6][3];
+
+// best view for plane normal
+// return value correspond to VIEWMODE, eProjectPlane
+inline unsigned ViewForPlane(const VECTOR3& planenormal)
+{
+	unsigned bestaxis = 0;
+	float dot, best = 0;
+	for(unsigned i = 0; i < 6; ++i)
+		if((dot = planenormal | TEXTUREAXIS[i][0]) > best)
+			best = dot, bestaxis = i;
+	return bestaxis;
+}
+
+//inline
+//void DimsForPlane(const VECTOR3& planenormal, unsigned& d1, unsigned& d2)
+//{
+//	unsigned bestaxis = ::ViewForPlane(planenormal);
+//	d1 = ::BASEDIMS[bestaxis][0],
+//	d2 = ::BASEDIMS[bestaxis][1];
+//}
+//
+//
+//inline
+//void AxisForPlane(const VECTOR3& planenormal, VECTOR3& vx, VECTOR3& vy)
+//{
+//	unsigned bestaxis = ::ViewForPlane(planenormal);
+//	vx = ::TEXTUREAXIS[bestaxis][0],
+//	vy = ::TEXTUREAXIS[bestaxis][1];
+//}
+
+
+
+
+//=============================================================================
+//								  BBOX1
+//=============================================================================
+
+struct BBOX1
+{
+	// ctors
+	BBOX1()
+		: Min(FLT_MAX), Max(-FLT_MAX)
+		{
+		}
+
+	BBOX1(const FLOAT _Min, const FLOAT _Max)
+		: Min(_Min), Max(_Max)
+		{
+		}
+
+	BBOX1(const VECTOR1& _Min, const VECTOR1& _Max)
+		: Min(_Min), Max(_Max)
+		{
+		}
+
+	BBOX1(const VECTOR1* _pVec, size_t _Size)
+		: Min(Minimize(_pVec, _Size)), Max(Maximize(_pVec, _Size))
+		{
+		}
+
+	// unary operators
+    BBOX1 operator + () const
+		{
+		return *this;
+		}
+
+    BBOX1 operator - () const
+		{
+		BBOX1 ret;
+		ret.CalcBounds(-Min);
+		ret.CalcBounds(-Max);
+		return ret;
+		}
+
+	// compare
+    bool operator == ( const BBOX1& _BBox ) const
+		{
+		return Min == _BBox.Min && Max == _BBox.Max;
+		}
+
+    bool operator != ( const BBOX1& _BBox ) const
+		{
+		return Min != _BBox.Min || Max != _BBox.Max;
+		}
+
+	// casting
+	operator VECTOR1* ()
+		{
+		return &Min;
+		}
+
+	operator const VECTOR1* () const
+		{
+		return &Min;
+		}
+
+	// services
+		void CalcBounds(FLOAT _X)					// :TODO: DEBUG ONLY! ????
+			{
+			CalcBounds(VECTOR1(_X));
+			}
+
+	void CalcBounds(const VECTOR1& _Vec)
+		{
+		Min = Minimize(Min, _Vec);
+		Max = Maximize(Max, _Vec);
+		}
+
+	void CalcBounds(const VECTOR1* _pVec, size_t _Size)
+		{
+		Min = Minimize(_pVec, _Size);
+		Max = Maximize(_pVec, _Size);
+		}
+
+	FLOAT Distance(const BBOX1& _BBox) const
+		{
+		return ((_BBox.Min + _BBox.Max)/2.0F - (Min + Max)/2.0F).Magnitude();
+		}
+
+	void Clear()
+		{
+		*this = BBOX1::C;
+		}
+
+	void Translate(const VECTOR1& v)
+		{
+		Min += v;
+		Max += v;
+		}
+
+	void Floor(int val)
+		{
+		Min.Floor(val);
+		Max.Floor(val);
+		}
+
+	void Ceil(int val)
+		{	// ceil
+		Min.Ceil(val);
+		Max.Ceil(val);
+		}
+
+	VECTOR1 GetCenter() const
+		{
+		return (Min + Max)/2;
+		}
+
+	bool isZero() const
+		{
+		return Min.isZero() && Max.isZero();
+		}
+
+	bool isFZero() const
+		{
+		return Min.isFZero() && Max.isFZero();
+		}
+
+	void Zero()
+		{
+		Min.Zero(), Max.Zero();
+		}
+
+	// intersection
+	friend bool isIntersect(const BBOX1& _BBox1, const BBOX1& _BBox2,
+		bool strong = false, FLOAT correction = 0.0F);
+	friend bool isInside(const BBOX1& _BBox1, const BBOX1& _BBox2,
+		bool strong = false, FLOAT correction = 0.0F);
+	friend bool isInside(const VECTOR1& _Vec, const BBOX1& _BBox,
+		bool strong = false);
+
+
+	// <<< set op (union, intersection, difference) >>>
+
+	// union (OR)
+	BBOX1 operator |(const BBOX1& _BBox) const
+		{
+		BBOX1 ret(*this);
+		ret |= _BBox;
+		return ret;
+		}
+
+	BBOX1& operator |=(const BBOX1& _BBox)
+		{
+		CalcBounds(_BBox.Min);
+		CalcBounds(_BBox.Max);
+		return *this;
+		}
+
+	// intersection (AND)
+	BBOX1 operator &(const BBOX1& _BBox) const
+		{
+		BBOX1 ret(*this);
+		ret &= _BBox;
+		return ret;
+		}
+
+	BBOX1& operator &=(const BBOX1& _BBox)
+		{
+		if (isIntersect(*this, _BBox))
+			{
+			BBOX1 crossed;
+			if (isInside(_BBox.Min, *this))
+				crossed.CalcBounds(_BBox.Min);
+			if (isInside(_BBox.Max, *this))
+				crossed.CalcBounds(_BBox.Max);
+			if (isInside(Min, _BBox))
+				crossed.CalcBounds(Min);
+			if (isInside(Max, _BBox))
+				crossed.CalcBounds(Max);
+			*this = crossed;
+			}
+		else
+			Zero();
+
+		return *this;
+		}
+
+	// difference (XOR)
+	BBOX1 operator ^(const BBOX1& _BBox) const		// :ATTENTION: has HALF functionality!
+		{
+		BBOX1 ret(*this);
+		ret ^= _BBox;
+		return ret;
+		}
+
+	BBOX1& operator ^=(const BBOX1& _BBox)			// :ATTENTION: has HALF functionality!
+		{
+		if (isIntersect(*this, _BBox))				// если объемы пересекаются...
+			{
+			if (isInside(_BBox, *this))				// если `второй` объем полностью вошел в наш
+				;									// просто вернем НАШ объем
+			else if (isInside(*this, _BBox))		// если наоборот: наш полностью поглотился вторым
+				Zero();								// вернем НУЛЕВОЙ объем
+			else if (isInside(_BBox.Min, *this))	// находим `различие (XOR)` объемов...
+				Max = _BBox.Min;
+			else if (isInside(_BBox.Max, *this))
+				Min = _BBox.Max;
+			}
+
+		return *this;
+		}
+
+	BBOX1 operator +(const BBOX1& _BBox) const
+		{	// сложение фактически соответствует объединению
+		BBOX1 ret(*this);
+		ret += _BBox;
+		return ret;
+		}
+
+	BBOX1& operator +=(const BBOX1& _BBox)
+		{
+		return *this |= _BBox;
+		}
+
+	BBOX1 operator -(const BBOX1& _BBox) const
+		{	// вычитание соответствует difference
+		BBOX1 ret(*this);
+		ret -= _BBox;
+		return ret;
+		}
+
+	BBOX1& operator -=(const BBOX1& _BBox)
+		{
+		return *this ^= _BBox;
+		}
+
+	BBOX1 operator *(FLOAT _Scale) const
+		{
+		BBOX1 ret(*this);
+		ret *= _Scale;
+		return ret;
+		}
+
+	BBOX1& operator *=(FLOAT _Scale)
+		{
+		Scale(_Scale, false);
+		return *this;
+		}
+
+	VECTOR1 Size() const
+		{
+		return Max - Min;
+		}
+
+	VECTOR1 ASize() const
+		{
+		return abs(Max - Min);
+		}
+
+	void Scale(FLOAT _Scale, bool _IsHomogeneous = false)
+		{
+		BBOX1 _ScaledBox;
+		const VECTOR1 _BoxSize = Max - Min;
+
+		if (_IsHomogeneous)
+			{
+			const VECTOR1 _DeltaX = _BoxSize * (_Scale - 1) / 2.0F;
+			_ScaledBox.CalcBounds(Min - _DeltaX);		// recalculate bounds (if _Scale - negate)
+			_ScaledBox.CalcBounds(Max + _DeltaX);
+			}
+		else
+			{
+			_ScaledBox.CalcBounds(Min);
+			_ScaledBox.CalcBounds(Min + _BoxSize * _Scale);	// recalculate bounds (if _Scale - negate)
+			}
+
+		*this = _ScaledBox;
+		}
+
+
+	VECTOR1 Min, Max;
+	static const BBOX1 C;
+};
+
+
+
+
+
+//=============================================================================
+//								  EBBOX1
+//=============================================================================
+
+struct EBBOX1 : BBOX1
+{
+	// ctors
+	EBBOX1()
+		{
+		}
+
+	EBBOX1(const FLOAT _Min, const FLOAT _Max)
+		: BBOX1(_Min, _Max)
+		{
+		}
+
+	EBBOX1(const VECTOR1& _Min, const VECTOR1& _Max)
+		: BBOX1(_Min, _Max)
+		{
+		}
+
+	EBBOX1(const VECTOR1& _Min, const VECTOR1& _Max, const VECTOR1& _Center)
+		: BBOX1(_Min, _Max), Center(_Center)
+		{
+		}
+
+	EBBOX1(const VECTOR1* _pVec, size_t _Size)
+		: BBOX1(_pVec, _Size)
+		{
+		}
+
+	// unary operators
+    EBBOX1 operator - () const
+		{
+		EBBOX1 ret;
+		ret.CalcBounds(-Min);
+		ret.CalcBounds(-Max);
+		ret.Center = -ret.Center;
+		return ret;
+		}
+
+
+	// services
+		void CalcBounds(FLOAT _X)					// :TODO: DEBUG ONLY! ????
+			{
+			CalcBounds(VECTOR1(_X));
+	
+			}
+
+	void CalcBounds(const VECTOR1& _Vec)
+		{
+		Min = Minimize(Min, _Vec);
+		Max = Maximize(Max, _Vec);
+		UpdateCenter();
+		}
+
+	void CalcBounds(const VECTOR1* _pVec, size_t _Size)
+		{
+		Min = Minimize(_pVec, _Size);
+		Max = Maximize(_pVec, _Size);
+		UpdateCenter();
+		}
+
+	void Clear()
+		{
+		BBOX1::Clear();
+		Center = VECTOR1::O;
+		}
+
+	void Translate(const VECTOR1& v)
+		{
+		BBOX1::Translate(v);
+		Center += v;
+		}
+
+	void Floor(int val)
+		{
+		BBOX1::Floor(val);
+		UpdateCenter();
+		}
+
+	void Ceil(int val)
+		{	// ceil
+		BBOX1::Ceil(val);
+		UpdateCenter();
+		}
+
+	void Zero()
+		{
+		BBOX1::Zero();
+		Center.Zero();
+		}
+
+	// <<< set op (union, intersection, difference) >>>
+
+	// union (OR)
+	EBBOX1 operator |(const EBBOX1& _BBox) const
+		{
+		EBBOX1 ret(*this);
+		ret |= _BBox;
+		return ret;
+		}
+
+	EBBOX1& operator |=(const EBBOX1& _BBox)
+		{
+		BBOX1::operator |=(_BBox);
+		UpdateCenter();
+		return *this;
+		}
+
+	// intersection (AND)
+	EBBOX1 operator &(const EBBOX1& _BBox) const
+		{
+		EBBOX1 ret(*this);
+		ret &= _BBox;
+		return ret;
+		}
+
+	EBBOX1& operator &=(const EBBOX1& _BBox)
+		{
+		BBOX1::operator &=(_BBox);
+		UpdateCenter();
+		return *this;
+		}
+
+	// difference (XOR)
+	EBBOX1 operator ^(const EBBOX1& _BBox) const		// :ATTENTION: has HALF functionality!
+		{
+		EBBOX1 ret(*this);
+		ret ^= _BBox;
+		return ret;
+		}
+
+	EBBOX1& operator ^=(const EBBOX1& _BBox)			// :ATTENTION: has HALF functionality!
+		{
+		BBOX1::operator ^=(_BBox);
+		UpdateCenter();
+		return *this;
+		}
+
+	EBBOX1 operator +(const EBBOX1& _BBox) const
+		{	// сложение фактически соответствует объединению
+		EBBOX1 ret(*this);
+		ret += _BBox;
+		return ret;
+		}
+
+	EBBOX1& operator +=(const EBBOX1& _BBox)
+		{
+		return *this |= _BBox;
+		}
+
+	EBBOX1 operator -(const EBBOX1& _BBox) const
+		{	// вычитание соответствует difference
+		EBBOX1 ret(*this);
+		ret -= _BBox;
+		return ret;
+		}
+
+	EBBOX1& operator -=(const EBBOX1& _BBox)
+		{
+		return *this ^= _BBox;
+		}
+
+	EBBOX1 operator *(FLOAT _Scale) const
+		{
+		EBBOX1 ret(*this);
+		ret *= _Scale;
+		return ret;
+		}
+
+	EBBOX1& operator *=(FLOAT _Scale)
+		{
+		Scale(_Scale, false);
+		return *this;
+		}
+
+	void Scale(FLOAT _Scale, bool _IsHomogeneous = false)
+		{
+		EBBOX1 _ScaledBox;
+		const VECTOR1 _BoxSize = Max - Min;
+
+		if (_IsHomogeneous)
+			{
+			const VECTOR1 _DeltaX = _BoxSize * (_Scale - 1) / 2.0F;
+			_ScaledBox.CalcBounds(Min - _DeltaX);		// recalculate bounds (if _Scale - negate)
+			_ScaledBox.CalcBounds(Max + _DeltaX);
+			}
+		else
+			{
+			_ScaledBox.CalcBounds(Min);
+			_ScaledBox.CalcBounds(Min + _BoxSize * _Scale);	// recalculate bounds (if _Scale - negate)
+			}
+
+		*this = _ScaledBox;
+		}
+
+	void UpdateCenter()
+		{
+		Center = BBOX1::GetCenter();
+		}
+
+	VECTOR1 Center;
+};
+
+
+
+
+
+//=============================================================================
+//								  BBOX2
+//=============================================================================
+
+struct BBOX2
+{
+	enum eBoxSideInfo {
+		BSI_INSIDE		= 1<<0,
+		BSI_TOP			= 1<<1,
+		BSI_RIGHT		= 1<<2,
+		BSI_TOPRIGHT	= BSI_TOP | BSI_RIGHT,
+		BSI_BOTTOM		= 1<<3,
+		BSI_BOTTOMRIGHT	= BSI_BOTTOM | BSI_RIGHT,
+		BSI_LEFT		= 1<<4,
+		BSI_BOTTOMLEFT	= BSI_BOTTOM | BSI_LEFT,
+		BSI_TOPLEFT		= BSI_TOP | BSI_LEFT,
+		  BSI_ALLSIDE	= BSI_TOP | BSI_RIGHT | BSI_BOTTOM | BSI_LEFT,
+		  BSI_ALL		= BSI_INSIDE | BSI_ALLSIDE,
+		  BSI_TOTAL		= 8
+	};
+
+	// ctors
+	BBOX2()
+		: Min(FLT_MAX), Max(-FLT_MAX)
+		{
+		}
+
+	BBOX2(FLOAT _MinX, FLOAT _MinY, FLOAT _MaxX, FLOAT _MaxY)
+		: Min(_MinX, _MinY), Max(_MaxX, _MaxY)
+		{
+		}
+
+	BBOX2(const VECTOR2& _Min, const VECTOR2& _Max)
+		: Min(_Min), Max(_Max)
+		{
+		}
+
+	BBOX2(const VECTOR2* _pVec, size_t _Size)
+		: Min(Minimize(_pVec, _Size)), Max(Maximize(_pVec, _Size))
+		{
+		}
+
+
+	// BUILD TEXTURE BOX
+	// Текстурный бокс для целевой грани строится исходя из данных вершин грани (vlist),
+	// размера массива вершин (_Size), компоненты вектора для 3D->2D перехода (d1, d2:
+	// брать из DimFromPlane()), поворот текстуры в градусах (rot_deg).
+	// На основе мировых координат [d1], [d2] вершин грани строится ббокс, 
+	// расширяется до биректа (coords[4][2]), и затем находятся мини-максы в текстуре
+	// с учетом поворота на rot_deg
+	BBOX2(const VECTOR3* vlist, size_t _Size, unsigned d1, unsigned d2, FLOAT rot_deg)
+		: Min(Minimize(vlist, _Size, d1, d2)), Max(Maximize(vlist, _Size, d1, d2))
+		{
+			FLOAT sinv, cosv, s, t,
+					min_s = FLT_MAX, min_t = FLT_MAX,
+					max_s = -FLT_MAX, max_t = -FLT_MAX;
+			::sincos(DEG2RADF(rot_deg), &sinv, &cosv);
+
+			const FLOAT texbrect[4][2] = {
+				Min.X, Min.Y, Max.X, Min.Y, Min.X, Max.Y, Max.X, Max.Y
+			};
+
+			for(unsigned i = 0; i < 4; ++i)
+			{
+				s = cosv * texbrect[i][0] - sinv * texbrect[i][1];
+				t = sinv * texbrect[i][0] + cosv * texbrect[i][1];
+				if(i & 1)
+				{
+					if(s > max_s) 
+						max_s = s;
+				}
+				else
+				{
+					if(s < min_s) 
+						min_s = s;
+					if(i<2)
+					{
+						if(t < min_t) 
+							min_t = t;
+					}
+					else
+					{
+						if(t > max_t) 
+							max_t = t;
+					}
+				}
+			}
+
+			Min.X = min_s, Min.Y = min_t, Max.X = max_s, Max.Y = max_t;
+		}
+
+	FLOAT GetTextureSScale(FLOAT texwidth)
+		{	// NOTE: texture-box must be already build!
+		return (Max.X - Min.X) / texwidth;
+		}
+
+	FLOAT GetTextureTScale(FLOAT texheight)
+		{	// NOTE: texture-box must be already build!
+		return (Max.Y - Min.Y) / texheight;
+		}
+
+	FLOAT GetTextureSShift(FLOAT texsscale, int texwidth)
+		{	// NOTE: texture-box must be already build!
+//		FLOAT texsshift = Min.X/texsscale;
+//		FLOAT temp = (int)(texsshift / texwidth);
+//		temp = (temp+1)*texwidth;
+//		return (int)(temp - texsshift) % texwidth;
+
+		return FLOAT( (int)(Min.X/texsscale) % texwidth );
+		}
+
+	FLOAT GetTextureTShift(FLOAT textscale, int texheight)
+		{	// NOTE: texture-box must be already build!
+//		FLOAT textshift = Min.Y/textscale;
+//		FLOAT temp = (int)(textshift / texheight);
+//		temp = (temp+1)*texheight;
+//		return (int)(temp - textshift) % texheight;
+
+		return FLOAT( (int)(Min.Y/textscale) % texheight );
+		}
+
+	// unary operators
+    BBOX2 operator + () const
+		{
+		return *this;
+		}
+
+    BBOX2 operator - () const
+		{
+		BBOX2 ret;
+		ret.CalcBounds(-Min);
+		ret.CalcBounds(-Max);
+		return ret;
+		}
+
+	// compare
+    bool operator == ( const BBOX2& _BBox ) const
+		{
+		return	Min == _BBox.Min && Max == _BBox.Max;
+		}
+
+    bool operator != ( const BBOX2& _BBox ) const
+		{
+		return	Min != _BBox.Min || Max != _BBox.Max;
+		}
+
+	// casting
+	operator VECTOR2* ()
+		{
+		return &Min;
+		}
+
+	operator const VECTOR2* () const
+		{
+		return &Min;
+		}
+
+		void CalcBounds(FLOAT _X, FLOAT _Y)					// :TODO: DEBUG ONLY! ????
+			{
+			CalcBounds(VECTOR2(_X, _Y));
+			}
+
+	void CalcBounds(const VECTOR2& _Vec)
+		{
+		Min = Minimize(Min, _Vec);
+		Max = Maximize(Max, _Vec);
+		}
+
+	void CalcBounds(FLOAT newVal, unsigned dim)
+		{
+		FLOAT& refMin = dim == 0 ? Min.X : Min.Y;
+		FLOAT& refMax = dim == 0 ? Max.X : Max.Y;
+		refMin = refMin < newVal ? refMin : newVal;
+		refMax = refMax > newVal ? refMax : newVal;
+		}
+
+	void CalcBounds(const VECTOR2* _pVec, size_t _Size)
+		{
+		Min = Minimize(_pVec, _Size);
+		Max = Maximize(_pVec, _Size);
+		}
+
+	void Clear()
+		{
+		*this = BBOX2::C;
+		}
+
+	void Translate(const VECTOR2& v)
+		{
+		Min += v;
+		Max += v;
+		}
+
+	VECTOR2 GetCenter() const
+		{
+		return (Min + Max)/2;
+		}
+
+	void Floor(int val)
+		{
+		Min.Floor(val);
+		Max.Floor(val);
+		}
+
+	void Ceil(int val)
+		{	// ceil
+		Min.Ceil(val);
+		Max.Ceil(val);
+		}
+
+	eBoxSideInfo GetSide(const VECTOR2& _Vec) const
+		{	// get box2 edge
+			return	_Vec.X < Min.X ?
+						_Vec.Y < Min.Y ? BSI_BOTTOMLEFT :
+						_Vec.Y > Max.Y ? BSI_TOPLEFT :
+										 BSI_LEFT :
+					_Vec.X > Max.X ?
+						_Vec.Y < Min.Y ? BSI_BOTTOMRIGHT :
+						_Vec.Y > Max.Y ? BSI_TOPRIGHT :
+										 BSI_RIGHT :
+						_Vec.Y < Min.Y ? BSI_BOTTOM :
+						_Vec.Y > Max.Y ? BSI_TOP :
+										 BSI_INSIDE;
+			//if(_Vec.X < Min.X)
+			//{
+			//	if(_Vec.Y < Min.Y)
+			//		return BSI_BOTTOMLEFT;
+			//	else if(_Vec.Y > Max.Y)
+			//		return BSI_TOPLEFT;
+			//	else
+			//		return BSI_LEFT;
+			//}
+			//else if(_Vec.X > Max.X)
+			//{
+			//	if(_Vec.Y < Min.Y)
+			//		return BSI_BOTTOMRIGHT;
+			//	else if(_Vec.Y > Max.Y)
+			//		return BSI_TOPRIGHT;
+			//	else
+			//		return BSI_RIGHT;
+			//}
+			//else	// _Vec inside bbox
+			//{
+			//	if(_Vec.Y < Min.Y)
+			//		return BSI_BOTTOM;
+			//	else if(_Vec.Y > Max.Y)
+			//		return BSI_TOP;
+			//	else
+			//		return BSI_INSIDE;
+			//}
+		}
+
+	FLOAT Distance(const BBOX2& _BBox) const
+		{
+		return sqrt(DistanceSquared(_BBox));
+		}
+
+	FLOAT DistanceSquared(const BBOX2& _BBox) const
+		{
+		const VECTOR2 distance = (_BBox.Min + _BBox.Max)/2.0F - (Min + Max)/2.0F;
+		return distance | distance;
+		}
+
+	bool isZero() const
+		{
+		return Min.isZero() && Max.isZero();
+		}
+
+	bool isFZero() const
+		{
+		return Min.isFZero() && Max.isFZero();
+		}
+
+	bool isFHasZero() const
+		{
+		return Size().isFHasZero();
+		}
+
+	void Zero()
+		{
+		Min.Zero(), Max.Zero();
+		}
+
+
+	friend bool isIntersect(const BBOX2& _BBox1, const BBOX2& _BBox2,
+		bool strong = false, FLOAT correction = 0.0F);
+	friend bool isInside(const BBOX2& _BBox1, const BBOX2& _BBox2,
+		bool strong = false, FLOAT correction = 0.0F);
+	friend bool isInside(const VECTOR2& _Vec, const BBOX2& _BBox,
+		bool strong = false);
+
+
+	// set op (union, intersection, difference)
+
+	// union (OR)
+	BBOX2 operator |(const BBOX2& _BBox)
+		{
+		BBOX2 ret(*this);
+		ret |= _BBox;
+		return ret;
+		}
+
+	BBOX2& operator |=(const BBOX2& _BBox)
+		{
+		CalcBounds(_BBox.Min);
+		CalcBounds(_BBox.Max);
+		return *this;
+		}
+
+	// intersection (AND)
+	BBOX2 operator &(const BBOX2& _BBox)
+		{
+		BBOX2 ret(*this);
+		ret &= _BBox;
+		return ret;
+		}
+
+	BBOX2& operator &=(const BBOX2& _BBox)
+		{
+		if (isIntersect(*this, _BBox))
+			{
+			BBOX2 crossed;
+			if (isInside(_BBox.Min, *this))
+				crossed.CalcBounds(_BBox.Min);
+			if (isInside(_BBox.Max, *this))
+				crossed.CalcBounds(_BBox.Max);
+			if (isInside(Min, _BBox))
+				crossed.CalcBounds(Min);
+			if (isInside(Max, _BBox))
+				crossed.CalcBounds(Max);
+			*this = crossed;
+			}
+		else
+			Zero();
+
+		return *this;
+		}
+
+	// difference (XOR)
+	BBOX2 operator ^(const BBOX2& _BBox)
+		{
+		BBOX2 ret(*this);
+		ret ^= _BBox;
+		return ret;
+		}
+
+	BBOX2& operator ^=(const BBOX2& _BBox)			// :ATTENTION: has HALF functionality!
+		{
+		if (isIntersect(*this, _BBox))				// если объемы пересекаются...
+			{
+			if (isInside(_BBox, *this))				// если `второй` объем полностью вошел в наш
+				;									// просто вернем НАШ объем
+			else if (isInside(*this, _BBox))		// если наоборот: наш полностью поглотился вторым
+				Zero();								// вернем НУЛЕВОЙ объем
+			else if (isInside(_BBox.Min, *this))	// находим `различие (XOR)` объемов...
+				Max = _BBox.Min;
+			else if (isInside(_BBox.Max, *this))
+				Min = _BBox.Max;
+			}
+
+		return *this;
+		}
+
+	BBOX2 operator +(const BBOX2& _BBox)
+		{	// сложение фактически соответствует объединению
+		BBOX2 ret(*this);
+		ret += _BBox;
+		return ret;
+		}
+
+	BBOX2& operator +=(const BBOX2& _BBox)
+		{
+		return *this |= _BBox;
+		}
+
+	BBOX2 operator -(const BBOX2& _BBox)
+		{	// вычитание соответствует difference
+		BBOX2 ret(*this);
+		ret -= _BBox;
+		return ret;
+		}
+
+	BBOX2& operator -=(const BBOX2& _BBox)
+		{
+		return *this ^= _BBox;
+		}
+
+	BBOX2 operator *(FLOAT _Scale) const
+		{
+		BBOX2 ret(*this);
+		ret *= _Scale;
+		return ret;
+		}
+
+	BBOX2& operator *=(FLOAT _Scale)
+		{
+		Scale(_Scale, _Scale, false);
+		return *this;
+		}
+
+	VECTOR2 Size() const
+		{
+		return Max - Min;
+		}
+
+	VECTOR2 ASize() const
+		{
+		return abs(Max - Min);
+		}
+
+	void Scale(FLOAT _XScale, FLOAT _YScale, bool _IsHomogeneous = false)
+		{
+		BBOX2 _ScaledBox;
+		const VECTOR2 _BoxSize = Max - Min;
+
+		if (_IsHomogeneous)
+			{
+			const VECTOR2 _DeltaXY =
+				_BoxSize.GetNScale((_XScale - 1) / 2.0F,
+								   (_YScale - 1) / 2.0F);
+			_ScaledBox.CalcBounds(Min - _DeltaXY);		// recalculate bounds (if _Scale - negate)
+			_ScaledBox.CalcBounds(Max + _DeltaXY);
+			}
+		else
+			{
+			_ScaledBox.CalcBounds(Min);
+			_ScaledBox.CalcBounds(Min +
+				_BoxSize.GetNScale(_XScale, _YScale));	// recalculate bounds (if _Scale - negate)
+			}
+
+		*this = _ScaledBox;
+		}
+
+
+	VECTOR2 Min, Max;
+	static const BBOX2 C;
+};
+
+
+
+
+//=============================================================================
+//								  EBBOX2
+//=============================================================================
+
+struct EBBOX2 : BBOX2
+{
+	// ctors
+	EBBOX2()
+		{
+		}
+
+	EBBOX2(FLOAT _MinX, FLOAT _MinY, FLOAT _MaxX, FLOAT _MaxY)
+		: BBOX2(_MinX, _MinY, _MaxX, _MaxY)
+		{
+		}
+
+	EBBOX2(const VECTOR2& _Min, const VECTOR2& _Max)
+		: BBOX2(_Min, _Max)
+		{
+		}
+
+	EBBOX2(const VECTOR2& _Min, const VECTOR2& _Max, const VECTOR2& _Center)
+		: BBOX2(_Min, _Max), Center(_Center)
+		{
+		}
+
+	EBBOX2(const VECTOR2* _pVec, size_t _Size)
+		: BBOX2(_pVec, _Size)
+		{
+		}
+
+	// unary operators
+    EBBOX2 operator - () const
+		{
+		EBBOX2 ret;
+		ret.BBOX2::CalcBounds(-Min);
+		ret.BBOX2::CalcBounds(-Max);
+		ret.Center = -ret.Center;
+		return ret;
+		}
+
+
+	// services
+		void CalcBounds(FLOAT _X, FLOAT _Y)					// :TODO: DEBUG ONLY! ????
+			{
+			CalcBounds(VECTOR2(_X, _Y));
+			UpdateCenter();
+			}
+
+	void CalcBounds(const VECTOR2& _Vec)
+		{
+		BBOX2::CalcBounds(_Vec);
+		UpdateCenter();
+		}
+
+	void CalcBounds(FLOAT newVal, unsigned dim)
+		{
+		BBOX2::CalcBounds(newVal, dim);
+		UpdateCenter();
+		}
+
+	void CalcBounds(const VECTOR2* _pVec, size_t _Size)
+		{
+		BBOX2::CalcBounds(_pVec, _Size);
+		UpdateCenter();
+		}
+
+	void Clear()
+		{
+		BBOX2::Clear();
+		Center = VECTOR2::O;
+		}
+
+	void Translate(const VECTOR2& v)
+		{
+		BBOX2::Translate(v);
+		Center += v;
+		}
+
+	void Floor(int val)
+		{
+		BBOX2::Floor(val);
+		UpdateCenter();
+		}
+
+	void Ceil(int val)
+		{	// ceil
+		BBOX2::Ceil(val);
+		UpdateCenter();
+		}
+
+	FLOAT Distance(const EBBOX2& _BBox) const
+		{
+		return sqrt(DistanceSquared(_BBox));
+		}
+
+	FLOAT DistanceSquared(const EBBOX2& _BBox) const
+		{
+		const VECTOR2 distance(_BBox.Center - Center);
+		return distance | distance;
+		}
+
+	void Zero()
+		{
+		BBOX2::Zero();
+		Center.Zero();
+		}
+
+	// set op (union, intersection, difference)
+
+	// union (OR)
+	EBBOX2 operator |(const EBBOX2& _BBox)
+		{
+		EBBOX2 ret(*this);
+		ret |= _BBox;
+		return ret;
+		}
+
+	EBBOX2& operator |=(const EBBOX2& _BBox)
+		{
+		BBOX2::operator |=(_BBox);
+		UpdateCenter();
+		return *this;
+		}
+
+	// intersection (AND)
+	EBBOX2 operator &(const EBBOX2& _BBox)
+		{
+		EBBOX2 ret(*this);
+		ret &= _BBox;
+		return ret;
+		}
+
+	EBBOX2& operator &=(const EBBOX2& _BBox)
+		{
+		BBOX2::operator &=(_BBox);
+		UpdateCenter();
+		return *this;
+		}
+
+	// difference (XOR)
+	EBBOX2 operator ^(const EBBOX2& _BBox)
+		{
+		EBBOX2 ret(*this);
+		ret ^= _BBox;
+		return ret;
+		}
+
+	EBBOX2& operator ^=(const EBBOX2& _BBox)			// :ATTENTION: has HALF functionality!
+		{
+		BBOX2::operator ^=(_BBox);
+		UpdateCenter();
+		return *this;
+		}
+
+	EBBOX2 operator +(const EBBOX2& _BBox)
+		{	// сложение фактически соответствует объединению
+		EBBOX2 ret(*this);
+		ret += _BBox;
+		return ret;
+		}
+
+	EBBOX2& operator +=(const EBBOX2& _BBox)
+		{
+		return *this |= _BBox;
+		}
+
+	EBBOX2 operator -(const EBBOX2& _BBox)
+		{	// вычитание соответствует difference
+		EBBOX2 ret(*this);
+		ret -= _BBox;
+		return ret;
+		}
+
+	EBBOX2& operator -=(const EBBOX2& _BBox)
+		{
+		return *this ^= _BBox;
+		}
+
+	EBBOX2 operator *(FLOAT _Scale) const
+		{
+		EBBOX2 ret(*this);
+		ret *= _Scale;
+		return ret;
+		}
+
+	EBBOX2& operator *=(FLOAT _Scale)
+		{
+		Scale(_Scale, _Scale, false);
+		return *this;
+		}
+
+	void Scale(FLOAT _XScale, FLOAT _YScale, bool _IsHomogeneous = false)
+		{
+		EBBOX2 _ScaledBox;
+		const VECTOR2 _BoxSize = Max - Min;
+
+		if (_IsHomogeneous)
+			{
+			const VECTOR2 _DeltaXY =
+				_BoxSize.GetNScale((_XScale - 1) / 2.0F,
+								   (_YScale - 1) / 2.0F);
+			_ScaledBox.CalcBounds(Min - _DeltaXY);		// recalculate bounds (if _Scale - negate)
+			_ScaledBox.CalcBounds(Max + _DeltaXY);
+			}
+		else
+			{
+			_ScaledBox.CalcBounds(Min);
+			_ScaledBox.CalcBounds(Min +
+				_BoxSize.GetNScale(_XScale, _YScale));	// recalculate bounds (if _Scale - negate)
+			}
+
+		*this = _ScaledBox;
+		}
+
+	void UpdateCenter()
+		{
+		Center = BBOX2::GetCenter();
+		}
+
+	VECTOR2 Center;
+};
+
+
+
+
+
+
+//=============================================================================
+//								  BBOX3
+//=============================================================================
+
+struct BBOX3
+{
+	struct boxsideinfo_ {
+		FLOAT	 boxNormal;			// 1 or -1
+		unsigned bnindex;			// index unit in normal-array
+		unsigned windex, hindex;	// index in min, max  bboxs arrays
+	};
+
+	static const boxsideinfo_ BSI[6];
+
+
+	// same as VIEWMODE
+	enum eBoxSideInfo {
+		BSI_NONE = -1,
+		BSI_FRONT,
+		BSI_LEFT,
+		BSI_BOTTOM,
+		BSI_BACK,
+		BSI_RIGHT,
+		BSI_TOP,
+		  BSI_TOTAL
+	};
+
+
+	//eBoxSideInfo GetSide(const VECTOR2& _Vec, unsigned/*VIEWMODE=ProjPlane*/ projplane) const
+	//	{
+	//	static const BBOX3::eBoxSideInfo
+	//		eBSI[BBOX3::eBoxSideInfo::BSI_TOTAL][BBOX2::eBoxSideInfo::BSI_TOTAL] = {
+	//			{ BSI_LEFT, BSI_RIGHT, BSI_BOTTOM, BSI_TOP },	//PP_FRONT
+	//			{ BSI_BACK, BSI_FRONT, BSI_BOTTOM, BSI_TOP },	//PP_LEFT
+	//			{ BSI_LEFT, BSI_RIGHT, BSI_FRONT, BSI_BACK },	//PP_BOTTOM
+	//			{ BSI_RIGHT, BSI_LEFT, BSI_BOTTOM, BSI_TOP },	//PP_BACK
+	//			{ BSI_FRONT, BSI_BACK, BSI_BOTTOM, BSI_TOP },	//PP_RIGHT
+	//			{ BSI_LEFT, BSI_RIGHT, BSI_BACK, BSI_FRONT }	//PP_TOP
+	//		};
+
+	//	const BBOX2::eBoxSideInfo box2edge = Project((eProjectPlane)projplane).GetSide(_Vec);
+	//	return box2edge != BBOX2::eBoxSideInfo::BSI_NONE ?
+	//							eBSI[projplane][box2edge] : BSI_NONE;
+	//	}
+
+	BBOX2::eBoxSideInfo Get2dSide(const VECTOR2& _Vec,
+								  unsigned/*VIEWMODE=ProjPlane*/ projplane) const
+		{
+			return Project((eProjectPlane)projplane).GetSide(_Vec);
+		}
+
+	// ctors
+	BBOX3()
+		: Min(FLT_MAX), Max(-FLT_MAX)
+		{
+		}
+
+	BBOX3(FLOAT _MinX, FLOAT _MinY, FLOAT _MinZ,
+		  FLOAT _MaxX, FLOAT _MaxY, FLOAT _MaxZ)
+		: Min(_MinX, _MinY, _MinZ),
+		  Max(_MaxX, _MaxY, _MaxZ)
+		{
+		}
+
+	BBOX3(const VECTOR3& _Min, const VECTOR3& _Max)
+		: Min(_Min), Max(_Max)
+		{
+		}
+
+	BBOX3(const VECTOR3* _pVec, size_t _Size)
+		: Min(Minimize(_pVec, _Size)), Max(Maximize(_pVec, _Size))
+		{
+		}
+
+	//template<class _ListT>
+	//	BBOX3(const VECTOR3 varr[], const _ListT indices[], size_t size)
+	//	: Min(FLT_MAX), Max(-FLT_MAX)
+	//	{
+	//	const _ListT* pIndex = indices;
+	//	for(size_t i = 0; i < size; ++i, ++pIndex)
+	//		CalcBounds(varr[*(_ListT::vertexindex*)pIndex]); // :NOTE: compatibility Big Endian <-> Low Endian
+	//	}
+
+	// unary operators
+    BBOX3 operator + () const
+		{
+		return *this;
+		}
+
+    BBOX3 operator - () const
+		{
+		BBOX3 ret;
+		ret.CalcBounds(-Min);
+		ret.CalcBounds(-Max);
+		return ret;
+		}
+
+	// compare
+    bool operator == ( const BBOX3& _BBox ) const
+		{
+		return	Min == _BBox.Min && Max == _BBox.Max;
+		}
+
+    bool operator != ( const BBOX3& _BBox ) const
+		{
+		return	Min != _BBox.Min || Max != _BBox.Max;
+		}
+
+	bool operator > ( const BBOX3& box ) const
+		{
+		return	Min.X < box.Min.X && Max.X > box.Max.X &&
+				Min.Y < box.Min.Y && Max.Y > box.Max.Y &&
+				Min.Z < box.Min.Z && Max.Z > box.Max.Z;
+		}
+
+	bool operator >= ( const BBOX3& box ) const
+		{
+		return	Min.X <= box.Min.X && Max.X >= box.Max.X &&
+				Min.Y <= box.Min.Y && Max.Y >= box.Max.Y &&
+				Min.Z <= box.Min.Z && Max.Z >= box.Max.Z;
+		}
+
+	bool operator < ( const BBOX3& box ) const
+		{
+		return	Min.X > box.Min.X && Max.X < box.Max.X &&
+				Min.Y > box.Min.Y && Max.Y < box.Max.Y &&
+				Min.Z > box.Min.Z && Max.Z < box.Max.Z;
+		}
+
+	bool operator <= ( const BBOX3& box ) const
+		{
+		return	Min.X >= box.Min.X && Max.X <= box.Max.X &&
+				Min.Y >= box.Min.Y && Max.Y <= box.Max.Y &&
+				Min.Z >= box.Min.Z && Max.Z <= box.Max.Z;
+		}
+
+	// casting
+	operator VECTOR3* ()
+		{
+		return &Min;
+		}
+
+	operator const VECTOR3* () const
+		{
+		return &Min;
+		}
+
+		void CalcBounds(FLOAT _X, FLOAT _Y, FLOAT _Z)	// :TODO: DEBUG ONLY! ????
+			{
+			CalcBounds(VECTOR3(_X, _Y, _Z));
+			}
+
+	void CalcBounds(const VECTOR3& _Vec)
+		{
+		Min = Minimize(Min, _Vec);
+		Max = Maximize(Max, _Vec);
+		}
+
+	void CalcBounds(FLOAT newVal, unsigned dim)
+		{
+		FLOAT& refMin = dim == 0 ? Min.X : dim == 1 ? Min.Y : Min.Z;
+		FLOAT& refMax = dim == 0 ? Max.X : dim == 1 ? Max.Y : Max.Z;
+		refMin = refMin < newVal ? refMin : newVal;
+		refMax = refMax > newVal ? refMax : newVal;
+		}
+
+	void CalcBounds(const VECTOR3* _pVec, size_t _Size)
+		{
+		Min = Minimize(_pVec, _Size);
+		Max = Maximize(_pVec, _Size);
+		}
+
+	void SetCameraClipper(const VECTOR3& origin, const VECTOR3& size)
+		{	// calc bounds for (cubic) camera clipper
+		const VECTOR3 halfsize(size * 0.5F);
+		Min = origin - halfsize;
+		Max = origin + halfsize;
+		}
+
+	void Clear()
+		{
+		*this = BBOX3::C;
+		}
+
+	void Translate(const VECTOR3& v)
+		{
+		Min += v;
+		Max += v;
+		}
+
+	void Translate(const VECTOR2& v, unsigned projplane)
+		{
+		Min.Translate(v, projplane);
+		Max.Translate(v, projplane);
+		}
+
+	void Floor(int val)
+		{
+		Min.Floor(val);
+		Max.Floor(val);
+		}
+
+	void Floor(eProjectPlane epp, int val)
+		{
+		Min.Floor(epp, val);
+		Max.Floor(epp, val);
+		}
+
+	void Ceil(int val)
+		{	// ceil
+		Min.Ceil(val);
+		Max.Ceil(val);
+		}
+
+	void Ceil(eProjectPlane epp, int val)
+		{	// ceil
+		Min.Ceil(epp, val);
+		Max.Ceil(epp, val);
+		}
+
+	void Clear(unsigned dim)
+		{
+		switch(dim)
+			{
+			case 0: Min.X = FLT_MAX, Max.X = -FLT_MAX; break;
+			case 1: Min.Y = FLT_MAX, Max.Y = -FLT_MAX; break;
+			case 2: Min.Z = FLT_MAX, Max.Z = -FLT_MAX; break;
+			}
+		}
+
+	FLOAT Distance(const BBOX3& _BBox) const
+		{
+		return sqrt(DistanceSquared(_BBox));
+		}
+
+	FLOAT DistanceSquared(const BBOX3& _BBox) const
+		{
+		const VECTOR3 distance = (_BBox.Min + _BBox.Max)/2.0F - (Min + Max)/2.0F;
+		return distance | distance;
+		}
+
+	bool isZero() const
+		{
+		return Min.isZero() && Max.isZero();
+		}
+
+	bool isFZero() const
+		{
+		return Min.isFZero() && Max.isFZero();
+		}
+
+	bool isFHasZero() const
+		{
+		return Size().isFHasZero();
+		}
+
+
+	void Zero()
+		{
+		Min.Zero(), Max.Zero();
+		}
+
+
+	// projection
+	BBOX2 ProjectXY() const
+		{
+		return BBOX2(Min.ProjectXY(), Max.ProjectXY());
+		}
+
+	BBOX2 ProjectZY() const
+		{
+		return BBOX2(Min.ProjectZY(), Max.ProjectZY());
+		}
+
+	BBOX2 ProjectXZ() const
+		{
+		return BBOX2(Min.ProjectXZ(), Max.ProjectXZ());
+		}
+
+	BBOX2 Project(eProjectPlane epp) const
+		{
+		typedef BBOX2 (BBOX3::*PROJECTTYPEMEMFUN)() const;
+		static const PROJECTTYPEMEMFUN ptmf[PP_TOTAL] = {
+			&BBOX3::ProjectXY,
+			&BBOX3::ProjectZY,
+			&BBOX3::ProjectXZ,
+			&BBOX3::ProjectXY,
+			&BBOX3::ProjectZY,
+			&BBOX3::ProjectXZ
+		};
+
+		return (this->*ptmf[epp])();		// :ATTENTION:
+		/*
+		switch(epp)
+		{
+		case PP_FRONT:
+			return ProjectXY();
+		case PP_LEFT:
+			return ProjectZY();
+		case PP_BOTTOM:
+		default:
+			return ProjectXZ();
+		}
+		*/
+		}
+
+	// intersection
+	bool Intersection(const VECTOR3& rayP0, const VECTOR3& rayV, FLOAT* t) const;
+	eBoxSideInfo  Intersection(const VECTOR3& rayP0, const VECTOR3& rayV,
+								VECTOR3* q, FLOAT* t) const;	// getting bboxside
+
+	friend bool isIntersect(const BBOX3& _BBox1, const BBOX3& _BBox2,
+		bool strong = false, FLOAT correction = 0.0F);
+	friend bool isIntersect2D(const BBOX3& _BBox1, const BBOX3& _BBox2, unsigned _2Dmode,
+		bool strong = false, FLOAT correction = 0.0F);
+	friend bool isInside(const BBOX3& _BBox1, const BBOX3& _BBox2,
+		bool strong = false, FLOAT correction = 0.0F);
+	friend bool isInside2D(const BBOX3& _BBox1, const BBOX3& _BBox2, unsigned _2Dmode,
+		bool strong = false, FLOAT correction = 0.0F);
+	friend bool isInside(const VECTOR3& _Vec, const BBOX3& _BBox,
+		bool strong = false);
+	friend bool isInside2D(const VECTOR3& _Vec, const BBOX3& _BBox, unsigned _2Dmode,
+		bool strong = false);
+
+
+	// set op (union, intersection, difference)
+
+	// union (OR)
+	BBOX3 operator |(const BBOX3& _BBox)
+		{
+		BBOX3 ret(*this);
+		ret |= _BBox;
+		return ret;
+		}
+
+	BBOX3& operator |=(const BBOX3& _BBox)
+		{
+		CalcBounds(_BBox.Min);
+		CalcBounds(_BBox.Max);
+		return *this;
+		}
+
+	// intersection (AND)
+	BBOX3 operator &(const BBOX3& _BBox)
+		{
+		BBOX3 ret(*this);
+		ret &= _BBox;
+		return ret;
+		}
+
+	BBOX3& operator &=(const BBOX3& _BBox)
+		{
+		if (isIntersect(*this, _BBox))
+			{
+			BBOX3 crossed;
+			if (isInside(_BBox.Min, *this))
+				crossed.CalcBounds(_BBox.Min);
+			if (isInside(_BBox.Max, *this))
+				crossed.CalcBounds(_BBox.Max);
+			if (isInside(Min, _BBox))
+				crossed.CalcBounds(Min);
+			if (isInside(Max, _BBox))
+				crossed.CalcBounds(Max);
+			*this = crossed;
+			}
+		else
+			Zero();
+
+		return *this;
+		}
+
+	// difference (XOR)
+	BBOX3 operator ^(const BBOX3& _BBox)
+		{
+		BBOX3 ret(*this);
+		ret ^= _BBox;
+		return ret;
+		}
+
+	BBOX3& operator ^=(const BBOX3& _BBox)			// :ATTENTION: has HALF functionality!
+		{
+		if (isIntersect(*this, _BBox))				// если объемы пересекаются...
+			{
+			if (isInside(_BBox, *this))				// если `второй` объем полностью вошел в наш
+				;									// просто вернем НАШ объем
+			else if (isInside(*this, _BBox))		// если наоборот: наш полностью поглотился вторым
+				Zero();								// вернем НУЛЕВОЙ объем
+			else if (isInside(_BBox.Min, *this))	// находим `различие (XOR)` объемов...
+				Max = _BBox.Min;
+			else if (isInside(_BBox.Max, *this))
+				Min = _BBox.Max;
+			}
+
+		return *this;
+		}
+
+	BBOX3 operator +(const BBOX3& _BBox) const
+		{	// сложение фактически соответствует объединению
+		BBOX3 ret(*this);
+		ret += _BBox;
+		return ret;
+		}
+
+	BBOX3& operator +=(const BBOX3& _BBox)
+		{
+		return *this |= _BBox;
+		}
+
+	BBOX3 operator + (const VECTOR3& _Vec) const
+		{
+		BBOX3 ret(*this);
+		ret += _Vec;
+		return ret;
+		}
+
+	BBOX3& operator +=(const VECTOR3& _Vec)
+		{
+		Min += _Vec, Max += _Vec;
+		return *this;
+		}
+
+	BBOX3 operator -(const BBOX3& _BBox)
+		{	// вычитание соответствует difference
+		BBOX3 ret(*this);
+		ret -= _BBox;
+		return ret;
+		}
+
+	BBOX3& operator -=(const BBOX3& _BBox)
+		{
+		return *this ^= _BBox;
+		}
+
+	BBOX3 operator *(FLOAT _Scale) const
+		{
+		BBOX3 ret(*this);
+		ret *= _Scale;
+		return ret;
+		}
+
+	BBOX3& operator *=(FLOAT _Scale)
+		{
+		Scale(_Scale, _Scale, _Scale, false);
+		return *this;
+		}
+
+	BBOX3 operator * (const struct MATRIX16& m) const;
+	BBOX3& operator *=(const struct MATRIX16& m);
+
+
+	VECTOR3 Size() const
+		{
+		return Max - Min;
+		}
+
+	VECTOR3 GetCenter() const
+		{
+		return (Min + Max)/2;
+		}
+
+	VECTOR3 ASize() const
+		{
+		return abs(Max - Min);
+		}
+
+	void Scale(FLOAT _XScale, FLOAT _YScale, FLOAT _ZScale,
+			   bool _IsHomogeneous = false)
+		{
+		BBOX3 _ScaledBox;
+		const VECTOR3 _BoxSize = Max - Min;
+
+		if (_IsHomogeneous)
+			{
+			const VECTOR3 _DeltaXYZ =
+				_BoxSize.GetNScale((_XScale - 1) / 2.0F,
+									(_YScale - 1) / 2.0F,
+									(_ZScale - 1) / 2.0F);
+			_ScaledBox.CalcBounds(Min - _DeltaXYZ);		// recalculate bounds (if _Scale - negate)
+			_ScaledBox.CalcBounds(Max + _DeltaXYZ);
+			}
+		else
+			{
+			_ScaledBox.CalcBounds(Min);
+			_ScaledBox.CalcBounds(Min +
+				_BoxSize.GetNScale(_XScale, _YScale, _ZScale));	// recalculate bounds (if _Scale - negate)
+			}
+
+		*this = _ScaledBox;
+		}
+
+
+	VECTOR3 Min, Max;
+	static const BBOX3 C;
+};
+
+
+
+
+
+
+//=============================================================================
+//								  EBBOX3
+//=============================================================================
+
+struct EBBOX3 : BBOX3
+{
+	// ctors
+	EBBOX3()
+		{
+		}
+
+	EBBOX3(FLOAT _MinX, FLOAT _MinY, FLOAT _MinZ,
+		  FLOAT _MaxX, FLOAT _MaxY, FLOAT _MaxZ)
+		: BBOX3(_MinX, _MinY, _MinZ, _MaxX, _MaxY, _MaxZ)
+		{
+		}
+
+	EBBOX3(const VECTOR3& _Min, const VECTOR3& _Max)
+		: BBOX3(_Min, _Max)
+		{
+		}
+
+	EBBOX3(const VECTOR3& _Min, const VECTOR3& _Max, const VECTOR3& _Center)
+		: BBOX3(_Min, _Max), Center(_Center)
+		{
+		}
+
+	EBBOX3(const VECTOR3* _pVec, size_t _Size)
+		: BBOX3(_pVec, _Size)
+		{
+		}
+
+	// unary operators
+    EBBOX3 operator - () const
+		{
+		EBBOX3 ret;
+		ret.BBOX3::CalcBounds(-Min);
+		ret.BBOX3::CalcBounds(-Max);
+		ret.UpdateCenter();
+		return ret;
+		}
+
+	// compare
+
+		void CalcBounds(FLOAT _X, FLOAT _Y, FLOAT _Z)	// :TODO: DEBUG ONLY! ????
+			{
+			BBOX3::CalcBounds(_X, _Y, _Z);
+			UpdateCenter();
+			}
+
+	void CalcBounds(const VECTOR3& _Vec)
+		{
+		BBOX3::CalcBounds(_Vec);
+		UpdateCenter();
+		}
+
+	void CalcBounds(FLOAT newVal, unsigned dim)
+		{
+		BBOX3::CalcBounds(newVal, dim);
+		UpdateCenter();
+		}
+
+	void CalcBounds(const VECTOR3* _pVec, size_t _Size)
+		{
+		BBOX3::CalcBounds(_pVec, _Size);
+		UpdateCenter();
+		}
+
+	void Clear()
+		{
+		BBOX3::Clear();
+		Center = VECTOR3::O;
+		}
+
+	void Translate(const VECTOR3& v)
+		{
+		BBOX3::Translate(v);
+		Center += v;
+		}
+
+	void Translate(const VECTOR2& v, unsigned projplane)
+		{
+		BBOX3::Translate(v, projplane);
+		Center.Translate(v, projplane);
+		}
+
+	void Floor(int val)
+		{
+		BBOX3::Floor(val);
+		Center.Floor(val);
+		}
+
+	void Floor(eProjectPlane epp, int val)
+		{
+		BBOX3::Floor(epp, val);
+		Center.Floor(epp, val);
+		}
+
+	void Ceil(int val)
+		{	// ceil
+		BBOX3::Ceil(val);
+		Center.Ceil(val);
+		}
+
+	void Ceil(eProjectPlane epp, int val)
+		{	// ceil
+		BBOX3::Ceil(epp, val);
+		Center.Ceil(epp, val);
+		}
+
+	void Clear(unsigned dim)
+		{
+		BBOX3::Clear(dim);
+		Center[dim] = 0;
+		}
+
+	FLOAT Distance(const EBBOX3& _BBox) const
+		{
+		return sqrt(DistanceSquared(_BBox));
+		}
+
+	FLOAT DistanceSquared(const EBBOX3& _BBox) const
+		{
+		const VECTOR3 distance = _BBox.Center - Center;
+		return distance | distance;
+		}
+
+	void Zero()
+		{
+		//Min.Zero(), Max.Zero();
+		BBOX3::Zero();
+		Center.Zero();
+		}
+
+
+	// projection
+	EBBOX2 ProjectXY() const
+		{
+		return EBBOX2(Min.ProjectXY(), Max.ProjectXY(), Center.ProjectXY());
+		}
+
+	EBBOX2 ProjectZY() const
+		{
+		return EBBOX2(Min.ProjectZY(), Max.ProjectZY(), Center.ProjectZY());
+		}
+
+	EBBOX2 ProjectXZ() const
+		{
+		return EBBOX2(Min.ProjectXZ(), Max.ProjectXZ(), Center.ProjectXZ());
+		}
+
+	EBBOX2 Project(eProjectPlane epp) const
+		{
+		typedef EBBOX2 (EBBOX3::*PROJECTTYPEMEMFUN)() const;
+		static const PROJECTTYPEMEMFUN ptmf[PP_TOTAL] = {
+			&EBBOX3::ProjectXY,
+			&EBBOX3::ProjectZY,
+			&EBBOX3::ProjectXZ,
+			&EBBOX3::ProjectXY,
+			&EBBOX3::ProjectZY,
+			&EBBOX3::ProjectXZ
+		};
+
+		return (this->*ptmf[epp])();		// :ATTENTION:
+		}
+
+
+
+	// set op (union, intersection, difference)
+
+	// union (OR)
+	EBBOX3 operator |(const EBBOX3& _BBox)
+		{
+		EBBOX3 ret(*this);
+		ret |= _BBox;
+		return ret;
+		}
+
+	EBBOX3& operator |=(const EBBOX3& _BBox)
+		{
+		BBOX3::operator |=(_BBox);
+		UpdateCenter();
+		return *this;
+		}
+
+	// intersection (AND)
+	EBBOX3 operator &(const EBBOX3& _BBox)
+		{
+		EBBOX3 ret(*this);
+		ret &= _BBox;
+		return ret;
+		}
+
+	EBBOX3& operator &=(const EBBOX3& _BBox)
+		{
+		BBOX3::operator &=(_BBox);
+		UpdateCenter();
+		return *this;
+		}
+
+	// difference (XOR)
+	EBBOX3 operator ^(const EBBOX3& _BBox)
+		{
+		EBBOX3 ret(*this);
+		ret ^= _BBox;
+		return ret;
+		}
+
+	EBBOX3& operator ^=(const EBBOX3& _BBox)			// :ATTENTION: has HALF functionality!
+		{
+		BBOX3::operator ^=(_BBox);
+		UpdateCenter();
+		return *this;
+		}
+
+	EBBOX3 operator +(const EBBOX3& _BBox)
+		{	// сложение фактически соответствует объединению
+		EBBOX3 ret(*this);
+		ret += _BBox;
+		return ret;
+		}
+
+	EBBOX3& operator +=(const EBBOX3& _BBox)
+		{
+		return *this |= _BBox;
+		}
+
+	EBBOX3 operator -(const EBBOX3& _BBox)
+		{	// вычитание соответствует difference
+		EBBOX3 ret(*this);
+		ret -= _BBox;
+		return ret;
+		}
+
+	EBBOX3& operator -=(const EBBOX3& _BBox)
+		{
+		return *this ^= _BBox;
+		}
+
+	EBBOX3 operator *(FLOAT _Scale) const
+		{
+		EBBOX3 ret(*this);
+		ret *= _Scale;
+		return ret;
+		}
+
+	EBBOX3& operator *=(FLOAT _Scale)
+		{
+		Scale(_Scale, _Scale, _Scale, false);
+		return *this;
+		}
+
+	void Scale(FLOAT _XScale, FLOAT _YScale, FLOAT _ZScale,
+			   bool _IsHomogeneous = false)
+		{
+		EBBOX3 _ScaledBox;
+		const VECTOR3 _BoxSize = Max - Min;
+
+		if (_IsHomogeneous)
+			{
+			const VECTOR3 _DeltaXYZ =
+				_BoxSize.GetNScale((_XScale - 1) / 2.0F,
+									(_YScale - 1) / 2.0F,
+									(_ZScale - 1) / 2.0F);
+			_ScaledBox.CalcBounds(Min - _DeltaXYZ);		// recalculate bounds (if _Scale - negate)
+			_ScaledBox.CalcBounds(Max + _DeltaXYZ);
+			}
+		else
+			{
+			_ScaledBox.CalcBounds(Min);
+			_ScaledBox.CalcBounds(Min +
+				_BoxSize.GetNScale(_XScale, _YScale, _ZScale));	// recalculate bounds (if _Scale - negate)
+			}
+
+		*this = _ScaledBox;
+		}
+
+	
+	void UpdateCenter()
+		{
+		Center = BBOX3::GetCenter();
+		}
+
+
+	VECTOR3 Center;
+};
+
+
+
+
+
+//=============================================================================
+//								  BBOX3CLIPPER
+//=============================================================================
+
+struct BBOX3CLIPPER : BBOX3
+{
+	BBOX3CLIPPER()
+		{
+		}
+
+	BBOX3CLIPPER(const VECTOR3& origin, const VECTOR3& size)
+		: BBOX3(), halfsize(size * 0.5F)
+		{
+		Min = origin - halfsize;
+		Max = origin + halfsize;
+		}
+
+	BBOX3CLIPPER(const VECTOR3& origin, FLOAT size)
+		: BBOX3(), halfsize(VECTOR3(size) * 0.5F)
+		{
+		Min = origin - halfsize;
+		Max = origin + halfsize;
+		}
+
+	void Update(const VECTOR3& neworigin)
+		{
+		Min = neworigin - halfsize;
+		Max = neworigin + halfsize;
+		}
+
+	void Update(const VECTOR3& neworigin, const VECTOR3& newsize)
+		{
+		halfsize = newsize * 0.5F;
+		Min = neworigin - halfsize;
+		Max = neworigin + halfsize;
+		}
+
+	void Update(const VECTOR3& neworigin, FLOAT newsize)
+		{
+		halfsize = VECTOR3(newsize) * 0.5F;
+		Min = neworigin - halfsize;
+		Max = neworigin + halfsize;
+		}
+
+	void Size(const VECTOR3& newsize)
+		{
+		halfsize = newsize * 0.5F;
+		}
+
+	VECTOR3 Size() const
+		{
+		return halfsize * 2.0F;
+		}
+
+	void ZoomIn(const VECTOR3& delta)
+		{
+		const VECTOR3 halfdelta(delta * 0.5F), origin(GetCenter());
+		if (halfsize > halfdelta)
+			{
+			halfsize -= halfdelta;
+			Min = origin - halfsize;
+			Max = origin + halfsize;
+			}
+		}
+
+	void ZoomIn(FLOAT delta)
+		{
+		ZoomIn(VECTOR3(delta));
+		}
+
+	void ZoomOut(const VECTOR3& delta)
+		{
+		const VECTOR3 origin(GetCenter());
+		halfsize += delta * 0.5F;
+		Min = origin - halfsize;
+		Max = origin + halfsize;
+		}
+
+	void ZoomOut(FLOAT delta)
+		{	// NOTE: increment HALF-size!
+		ZoomOut(VECTOR3(delta));
+		}
+
+
+	VECTOR3 halfsize;
+};
+
+
+
+
+
+
+//*****************************************************************************
+//									BBOX UTILITES
+//*****************************************************************************
+
+inline
+	bool isIntersect(const VECTOR2& v1, const VECTOR2& v2,
+						bool strong = false, FLOAT correction = 0.0F)
+	{
+	return	bbox_inside<FLOAT>(v1.X, v2.X - correction, v2.X + correction, strong) &&
+			bbox_inside<FLOAT>(v1.Y, v2.Y - correction, v2.Y + correction, strong);
+	}
+
+inline
+	bool isIntersect2D(const VECTOR2& v1, const VECTOR3& v2, unsigned projplane,
+					   bool strong = false, FLOAT correction = 0.0F)
+	{
+	return	isIntersect(v1, v2.Project((eProjectPlane)projplane), strong, correction);
+	}
+
+inline
+	bool isIntersect2D(const VECTOR3& v1, const VECTOR3& v2, unsigned projplane,
+					   bool strong = false, FLOAT correction = 0.0F)
+	{
+	return	isIntersect(v1.Project((eProjectPlane)projplane),
+						v2.Project((eProjectPlane)projplane), strong, correction);
+	}
+
+
+
+
+/*
+===============================================================================
+Procs:	bool isIntersect(const BBOXN& _BBox1, const BBOXN& _BBox2,
+						 bool strong, FLOAT correction)
+Desc:	Check bbox`s intersection
+Rem:	1. "strong" - касание НЕ считается пересечением
+		2. коррекция тестируемого объема (_BBox1) (- -- сжатие, + -- раздувание)
+===============================================================================
+*/
+inline
+	bool isIntersect(const BBOX1& _BBox1, const BBOX1& _BBox2,
+		bool strong, FLOAT correction)
+	{
+	return ::bbox_cross<FLOAT>(_BBox1.Min.X, _BBox1.Max.X,
+				_BBox2.Min.X, _BBox2.Max.X, strong, correction);
+	}
+
+inline
+	bool isIntersect(const BBOX2& _BBox1, const BBOX2& _BBox2,
+		bool strong, FLOAT correction)
+	{
+	return	::bbox_cross<FLOAT>(_BBox1.Min.X, _BBox1.Max.X,
+				_BBox2.Min.X, _BBox2.Max.X, strong, correction) &&
+			::bbox_cross<FLOAT>(_BBox1.Min.Y, _BBox1.Max.Y,
+				_BBox2.Min.Y, _BBox2.Max.Y, strong, correction);
+	}
+
+inline
+	bool isIntersect(const BBOX3& _BBox1, const BBOX3& _BBox2,
+		bool strong, FLOAT correction)
+	{
+	return	::bbox_cross<FLOAT>(_BBox1.Min.X, _BBox1.Max.X,
+				_BBox2.Min.X, _BBox2.Max.X, strong, correction) &&
+			::bbox_cross<FLOAT>(_BBox1.Min.Y, _BBox1.Max.Y,
+				_BBox2.Min.Y, _BBox2.Max.Y, strong, correction) &&
+			::bbox_cross<FLOAT>(_BBox1.Min.Z, _BBox1.Max.Z,
+				_BBox2.Min.Z, _BBox2.Max.Z, strong, correction);
+	}
+
+inline
+	bool isIntersect2D(const BBOX2& _BBox1, const BBOX3& _BBox2, unsigned projplane,
+			bool strong, FLOAT correction)
+	{
+
+	return	::isIntersect(_BBox1, _BBox2.Project((eProjectPlane)projplane),
+						  strong, correction);
+	}
+
+inline
+	bool isIntersect2D(const BBOX3& in, const BBOX2& box, unsigned projplane,
+			bool strong = false, FLOAT correction = 0)
+	{
+	return	::isIntersect(in.Project((eProjectPlane)projplane), box, strong, correction);
+	}
+
+inline
+	bool isIntersect2D(const BBOX3& _BBox1, const BBOX3& _BBox2, unsigned projplane,
+			bool strong, FLOAT correction)
+	{
+
+	return	::isIntersect(_BBox1.Project((eProjectPlane)projplane),
+						  _BBox2.Project((eProjectPlane)projplane),
+						  strong, correction);
+	}
+
+/*
+===============================================================================
+Procs:	bool isInside(const BBOXN& _BBox1, const BBOXN& _BBox2,
+					  bool strong, FLOAT correction)
+Desc:	Is bbox1 inside in bbox2?
+Rem:	1. "strong" - касание внутренностей уже НЕ считается нахождением внутри
+		2. коррекция тестируемого объема (bbox1) (`-` -- сжатие, `+` -- раздувание)
+===============================================================================
+*/
+inline
+	bool isInside(const BBOX1& _BBox1, const BBOX1& _BBox2,
+		bool strong, FLOAT correction)
+	{
+	return bbox_inside<FLOAT>(_BBox1.Min.X, _BBox1.Max.X,
+				_BBox2.Min.X, _BBox2.Max.X, strong, correction);
+	}
+
+inline
+	bool isInside(const BBOX2& _BBox1, const BBOX2& _BBox2,
+		bool strong, FLOAT correction)
+	{
+	return	bbox_inside<FLOAT>(_BBox1.Min.X, _BBox1.Max.X,
+				_BBox2.Min.X, _BBox2.Max.X, strong, correction) &&
+			bbox_inside<FLOAT>(_BBox1.Min.Y, _BBox1.Max.Y,
+				_BBox2.Min.Y, _BBox2.Max.Y, strong, correction);
+	}
+
+inline
+	bool isInside(const BBOX3& _BBox1, const BBOX3& _BBox2,
+		bool strong, FLOAT correction)
+	{
+	return	bbox_inside<FLOAT>(_BBox1.Min.X, _BBox1.Max.X,
+				_BBox2.Min.X, _BBox2.Max.X, strong, correction) &&
+			bbox_inside<FLOAT>(_BBox1.Min.Y, _BBox1.Max.Y,
+				_BBox2.Min.Y, _BBox2.Max.Y, strong, correction) &&
+			bbox_inside<FLOAT>(_BBox1.Min.Z, _BBox1.Max.Z,
+				_BBox2.Min.Z, _BBox2.Max.Z, strong, correction);
+	}
+
+inline 
+bool isInside2D(const BBOX2& _BBox1, const BBOX3& _BBox2, unsigned projplane,
+				bool strong = false, FLOAT correction = 0.0F)
+	{
+	return	isInside(_BBox1, _BBox2.Project((eProjectPlane)projplane),
+					 strong, correction);
+	}
+
+inline 
+bool isInside2D(const BBOX3& _BBox1, const BBOX3& _BBox2, unsigned projplane,
+				bool strong, FLOAT correction)
+	{
+	return	isInside(_BBox1.Project((eProjectPlane)projplane),
+					 _BBox2.Project((eProjectPlane)projplane),
+					 strong, correction);
+	}
+
+
+/*
+===============================================================================
+Procs:	bool isInside(const VECTORN _Vec, const BBOXN& _BBox, bool strong)
+Desc:	_Vec inside in bbox?
+Rem:	1. "strong" - касание НЕ считается нахождением внутри
+===============================================================================
+*/
+inline
+	bool isInside(const VECTOR1& _Vec, const BBOX1& _BBox, bool strong)
+	{
+	return	bbox_inside<FLOAT>(_Vec.Magnitude(), _BBox.Min.X, _BBox.Max.X, strong);
+	}
+
+inline
+	bool isInside(const VECTOR2& _Vec, const BBOX2& _BBox, bool strong)
+	{
+	return	bbox_inside<FLOAT>(_Vec.X, _BBox.Min.X, _BBox.Max.X, strong) &&
+			bbox_inside<FLOAT>(_Vec.Y, _BBox.Min.Y, _BBox.Max.Y, strong);
+	}
+
+inline
+	bool isInside(const VECTOR3& _Vec, const BBOX3& _BBox, bool strong)
+	{
+	return	bbox_inside<FLOAT>(_Vec.X, _BBox.Min.X, _BBox.Max.X, strong) &&
+			bbox_inside<FLOAT>(_Vec.Y, _BBox.Min.Y, _BBox.Max.Y, strong) &&
+			bbox_inside<FLOAT>(_Vec.Z, _BBox.Min.Z, _BBox.Max.Z, strong);
+	}
+
+inline
+	bool isInside2D(const VECTOR3& _Vec, const BBOX3& _BBox, unsigned projplane, bool strong)
+	{
+	return	isInside(_Vec.Project((eProjectPlane)projplane),
+					 _BBox.Project((eProjectPlane)projplane), strong);
+	}
+
+inline
+	bool isInside2D(const VECTOR3& _Vec, const BBOX2& _BBox, unsigned projplane, bool strong)
+	{
+	return isInside(_Vec.Project((eProjectPlane)projplane), _BBox, strong);
+	}
+
+inline
+	bool isInside2D(const VECTOR2& _Vec, const BBOX3& _BBox, unsigned projplane, bool strong)
+	{
+	return isInside(_Vec, _BBox.Project((eProjectPlane)projplane), strong);
+	}
+
+
+inline
+bool IntersectionRay(const BBOX3& _BBox, const VECTOR3& rayP0, const VECTOR3& rayV, FLOAT* t)
+	{
+		FLOAT tnear = FLT_MAX;
+		for(unsigned bside = 0; bside < 6; ++bside)
+		{
+			if(rayV[BBOX3::BSI[bside].bnindex])
+			{
+				// find intersection plane-line
+				const VECTOR3& p0 = bside < 3 ? _BBox.Max : _BBox.Min;
+				const FLOAT tt =
+					(p0[BBOX3::BSI[bside].bnindex] - rayP0[BBOX3::BSI[bside].bnindex]) *
+					BBOX3::BSI[bside].boxNormal / rayV[BBOX3::BSI[bside].bnindex] *
+					BBOX3::BSI[bside].boxNormal;
+				if(tt > 0 && tt < tnear)
+				{
+					const VECTOR3 q = rayP0 + tt * rayV;
+					// check on accessory _BBox
+					if(	q[BBOX3::BSI[bside].windex] > _BBox.Min[BBOX3::BSI[bside].windex] &&
+						q[BBOX3::BSI[bside].windex] < _BBox.Max[BBOX3::BSI[bside].windex] && 
+						q[BBOX3::BSI[bside].hindex] > _BBox.Min[BBOX3::BSI[bside].hindex] &&
+						q[BBOX3::BSI[bside].hindex] < _BBox.Max[BBOX3::BSI[bside].hindex])
+							tnear = tt
+							;
+				}
+			}
+		}
+
+		*t = tnear;
+		return tnear < FLT_MAX;
+	}
+
+
+
+
+
+
+
+
+
+//*****************************************************************************
+//								IMPLICITLINE2
+//*****************************************************************************
+
+struct IMPLICITLINE2
+{
+	IMPLICITLINE2()
+		{
+		}
+
+	IMPLICITLINE2( FLOAT a, FLOAT b, FLOAT d )
+		: A(a), B(b), D(d)
+		{
+		}
+
+	IMPLICITLINE2( const VECTOR2& _Normal, FLOAT _Dist)
+		: N(_Normal), D(_Dist)
+		{
+		}
+
+	IMPLICITLINE2( const VECTOR2& _Start, const VECTOR2& _End )
+		: N((_End - _Start).GetPerpendicular().GetNormalized()),
+		D(-( N | _Start ))
+		{
+		}
+
+	// unary operators
+    IMPLICITLINE2 operator + () const
+		{
+		return *this;
+		}
+
+    IMPLICITLINE2 operator - () const
+		{
+		return IMPLICITLINE2(-A, -B, -D);
+		}
+
+	// compare
+    bool operator == ( const IMPLICITLINE2& Right ) const
+		{
+		return A == Right.A && B == Right.B && D == Right.D;
+		}
+
+    bool operator != ( const IMPLICITLINE2& Right ) const
+		{
+		return A != Right.A || B != Right.B || D != Right.D;
+		}
+
+	bool isZero() const
+		{
+		return A == 0 && B == 0 && D == 0;
+		}
+	
+	// math
+	IMPLICITLINE2 operator ^ (const IMPLICITLINE2& Right) const
+		{
+		return IMPLICITLINE2(
+			B * Right.D - D * Right.B,
+			D * Right.A - A * Right.D,
+			A * Right.B - B * Right.A);
+		}
+
+	FLOAT operator | ( const VECTOR2& _Vec ) const
+		{
+		return (N | _Vec) + D;
+		}
+
+	VECTOR2 GetAnyPoint() const
+		{
+		return A ? VECTOR2(-D/A, 0) : VECTOR2(0, -D/B);
+		}
+
+	VECTOR2 GetNearestPoint() const
+		{	// get nearest to origin point
+		return N * (-D / (N | N));
+		}
+
+	// utils
+	friend bool isCoincide( const IMPLICITLINE2&, const IMPLICITLINE2& );
+	friend bool isParallel( const IMPLICITLINE2&, const IMPLICITLINE2& );
+	friend bool isOrthogonal( const IMPLICITLINE2&, const IMPLICITLINE2& );
+	friend FLOAT Distance( const IMPLICITLINE2&, const IMPLICITLINE2& );
+	friend FLOAT Distance( const IMPLICITLINE2&, const VECTOR2& );
+	friend IMPLICITLINE2 Perpendicular( const IMPLICITLINE2&, const VECTOR2& );
+	friend VECTOR2 MirroringPoint( const IMPLICITLINE2&, const VECTOR2& );
+	friend int Intersection( const IMPLICITLINE2&, const IMPLICITLINE2&, VECTOR2& );
+	friend FLOAT Angle( const IMPLICITLINE2&, const IMPLICITLINE2&);
+
+
+	union {
+		struct {
+			FLOAT A, B;
+		};
+		struct {
+			VECTOR2 N;
+		};
+	};
+
+	FLOAT D;
+};
+
+
+
+
+//*****************************************************************************
+//								PARAMETRICLINE2
+//*****************************************************************************
+
+struct PARAMETRICLINE2
+{
+	PARAMETRICLINE2()
+		{
+		}
+
+	PARAMETRICLINE2( FLOAT p0x, FLOAT p0y,
+					 FLOAT vx, FLOAT vy )
+		: P0(p0x, p0y), V(vx, vy)
+		{
+		}
+
+	PARAMETRICLINE2( const VECTOR2& _Start, const VECTOR2& _End )
+		: P0(_Start), V(_End - _Start)
+		{
+		}
+
+	PARAMETRICLINE2( FLOAT A, FLOAT B, FLOAT D )
+		: P0(A ? VECTOR2(-D/A, 0) : VECTOR2(0, -D/B)),
+		V(-B, A)
+		{
+		}
+
+	PARAMETRICLINE2( const VECTOR2& _Normal, FLOAT D )
+		: P0(_Normal.X ? VECTOR2(-D/_Normal.X, 0) : VECTOR2(0, -D/_Normal.Y)),
+		V(_Normal.GetRevPerpendicular())		// need reverse perp normal!
+		{
+		}
+
+	// unary operators
+    PARAMETRICLINE2 operator + () const
+		{
+		return *this;
+		}
+
+    PARAMETRICLINE2 operator - () const
+		{
+		return PARAMETRICLINE2(-P0, -V);
+		}
+
+	// compare
+    bool operator == ( const PARAMETRICLINE2& _Right ) const
+		{
+		return P0 == _Right.P0 && V == _Right.V;
+		}
+
+    bool operator != ( const PARAMETRICLINE2& _Right) const
+		{
+		return P0 != _Right.P0 || V != _Right.V;
+		}
+
+	bool isZero() const
+		{
+		return P0.isZero() && V.isZero();
+		}
+
+	// math
+	VECTOR2 Lerp( FLOAT t ) const
+		{	// linear interpolation
+		return P0 + V * t;
+		}
+
+
+	friend bool isCoincide( const PARAMETRICLINE2&, const PARAMETRICLINE2& );
+	friend bool isParallel( const PARAMETRICLINE2&, const PARAMETRICLINE2& );
+	friend bool isOrthogonal( const PARAMETRICLINE2&, const PARAMETRICLINE2& );
+	friend FLOAT Distance( const PARAMETRICLINE2&, const PARAMETRICLINE2& );
+	friend FLOAT Distance( const PARAMETRICLINE2&, const VECTOR2& );
+	friend PARAMETRICLINE2 Perpendicular( const PARAMETRICLINE2&, const VECTOR2& );
+	friend VECTOR2 MirroringPoint( const PARAMETRICLINE2&, const VECTOR2& );
+	friend int Intersection( const PARAMETRICLINE2&, const PARAMETRICLINE2&, VECTOR2& );
+	friend int OrientationConv( const PARAMETRICLINE2&, const VECTOR2& );
+	friend FLOAT Angle( const PARAMETRICLINE2&, const PARAMETRICLINE2&);
+
+
+	VECTOR2 P0, V;
+};
+
+
+//*************************************************************************
+//					EXTENDED VECTOR (base on STL std::vector<T>)
+//*************************************************************************
+
+#include <vector>
+template <typename T>
+	struct vectorex
+	: public std::vector<T>
+{
+	typedef std::vector<T> _Base;
+	typedef typename _Base::allocator_type allocator_type;
+	typedef typename _Base::size_type size_type;
+	typedef typename _Base::difference_type difference_type;
+	typedef typename _Base::pointer pointer;
+	typedef typename _Base::const_pointer const_pointer;
+	typedef typename _Base::reference reference;
+	typedef typename _Base::const_reference const_reference;
+	typedef typename _Base::value_type value_type;
+	typedef _Base::iterator iterator;
+	typedef _Base::const_iterator const_iterator;
+	typedef _Base::reverse_iterator reverse_iterator;
+	typedef _Base::const_reverse_iterator const_reverse_iterator;
+
+	vectorex()
+		{
+		}
+
+	explicit vectorex(size_type _Reserve)
+		{
+		_Base::reserve(_Reserve);
+		}
+
+	vectorex(size_type _Count, const T& _Val)
+		: _Base(_Count, _Val)
+		{
+		}
+
+	vectorex(const T* _ValList, size_type _Count)
+		: _Base(_ValList, _ValList + _Count)
+		{
+		}
+
+	vectorex(const vectorex<T>& _ValList, size_type _Count)
+		: _Base(_ValList.begin(), _ValList.begin() + _Count)
+		{
+		}
+
+	template<typename IndexListT>
+	vectorex(const T* _ValList, const IndexListT* _IndexList, size_type _Count)
+		{
+		_Base::reserve(_Count);
+		for(size_type i = 0; i < _Count; ++i)
+			_Base::push_back(_ValList[_IndexList[i]]);
+		}
+
+	template<typename IndexListT>
+	vectorex(const vectorex<T>& _ValList, const vectorex<IndexListT>& _IndexList)
+		{
+		typedef vectorex<IndexListT>::const_iterator index_iterator;
+		_Base::reserve(_IndexList.size());
+		for(index_iterator i = _IndexList.begin(); i != _IndexList.end(); ++i)
+			_Base::push_back(_ValList[*i]);
+		}
+
+	template<typename IndexListT>
+	vectorex(const vectorex<T>& _ValList, const vectorex<IndexListT>& _IndexList,
+			 size_type _Count)
+		{
+		_Base::reserve(_Count);
+		for(size_type i = 0; i < _Count; ++i)
+			_Base::push_back(_ValList[_IndexList[i]]);
+		}
+
+	// find
+	iterator find(const_reference _Val)
+		{
+			for(iterator i = begin(); i != end(); ++i)
+				if(*i == _Val)
+					return i;
+			return 0;
+		}
+
+	const_iterator find(const_reference _Val) const
+		{
+			for(const_iterator i = begin(); i != end(); ++i)
+				if(*i == _Val)
+					return i;
+			return 0;
+		}
+
+
+	// memory
+	void hard_clear()				// очистка с сокращением емкости до минимальной
+		{
+		_Base().swap(*this);
+		}
+
+	void check_capacity()			// сокращение емкости до минимальной
+		{
+		_Base(*this).swap(*this);
+		}
+
+	size_type freespace()			// сколько еще элементов можно разместить без
+		{							// расширения контейнера
+		return _Base::capacity() - _Base::size();
+		}
+
+	// add / delete vertex
+	using _Base::insert;
+
+	void insert(const T& _Val)
+		{
+		_Base::push_back(_Val);
+		}
+
+	_Base::iterator insert(size_type _Pos, const T& _Val)
+		{
+		return _Base::insert(begin() + _Pos, _Val);
+		}
+
+	void insert(size_type _Pos, size_type _Count, const T& _Val)
+		{
+		_Base::insert(begin() + _Pos, _Count, _Val);
+		}
+
+	using _Base::erase;
+
+	void erase(size_type _Pos)
+		{
+		_Base::erase(begin() + _Pos);
+		}
+
+	void erase(size_type _Pos, size_type _Num)
+		{
+		_Base::iterator _First = begin() + _Pos;
+		_Base::erase(_First, _First + _Num);
+		}
+
+	// reverse
+	void reverse()
+		{
+		for (_Base::iterator _First = begin(), _Last = end();
+					_First != _Last && _First != --_Last; ++_First)
+			std::swap(*_First, *_Last);
+		}
+
+	// merge
+	vectorex<T> operator + (const vectorex<T>& _Right) const
+		{
+		vectorex<T> ret(*this);
+		ret += _Right;
+		return ret;
+		}
+
+	vectorex<T>& operator += (const vectorex<T>& _Right)
+		{
+		reserve(size() + _Right.size());
+		insert(end(), _Right.begin(), _Right.end());
+		return *this;
+		}
+
+	// logic operators
+	vectorex<T>  operator & (const vectorex<T>& _Right) const
+		{	// union (&)
+		vectorex<T> ret(size() + _Right.size());
+		for (const_iterator _IItr = begin(); _IItr != end(); ++_IItr)
+			{
+			for (const_iterator _OItr =  ret.begin(); _OItr != ret.end(); ++_OItr)
+				if (*_IItr == *_OItr)
+					goto next1;
+			ret.push_back(*_IItr);
+			next1:
+				;
+			}
+		for (const_iterator _IItr = _Right.begin(); _IItr != _Right.end(); ++_IItr)
+			{
+			for (const_iterator _OItr =  ret.begin(); _OItr != ret.end(); ++_OItr)
+				if (*_IItr == *_OItr)
+					goto next2;
+			ret.push_back(*_IItr);
+			next2:
+				;
+			}
+		return ret;
+		}
+
+	vectorex<T>& operator &= (const vectorex<T>& _Right)
+		{
+		return *this = *this & _Right;
+		}
+
+	vectorex<T>  operator | (const vectorex<T>& _Right) const
+		{	// intersection (|)
+		vectorex<T> ret(size() + _Right.size());
+		for (const_iterator _IItr1 = begin(); _IItr1 != end(); ++_IItr1)
+			for (const_iterator _IItr2 = _Right.begin(); _IItr2 != _Right.end(); ++_IItr2)
+				if (*_IItr1 == *_IItr2)
+					{ ret.push_back(*_IItr1); break; }
+		return ret;
+		}
+
+
+	vectorex<T>& operator |= (const vectorex<T>& _Right)
+		{
+		return *this = *this | _Right;
+		}
+
+	vectorex<T>  operator ^ (const vectorex<T>& _Right) const
+		{	// difference (^)
+		vectorex<T> ret(size() + _Right.size());
+		for (const_iterator _IItr1 = begin(); _IItr1 != end(); ++_IItr1)
+			{
+			for (const_iterator _IItr2 = _Right.begin(); _IItr2 != _Right.end(); ++_IItr2)
+				if (*_IItr1 == *_IItr2)
+					goto next;
+			ret.push_back(*_IItr1);
+			next:
+				;
+			}
+		return ret;
+		}
+
+
+	vectorex<T>& operator ^= (const vectorex<T>& _Right)
+		{
+		return *this = *this ^ _Right;
+		}
+};
+
+// `vectorex<VECTOR3>::find`: explicit spezialization for VECTOR3
+template<>
+vectorex<VECTOR3>::iterator vectorex<VECTOR3>::find(const VECTOR3& _Val)
+	{
+		for(iterator i = begin(); i != end(); ++i)
+			if(::equal(*i, _Val))
+				return i;
+		return 0;
+	}
+
+template<>
+vectorex<VECTOR3>::const_iterator vectorex<VECTOR3>::find(const VECTOR3& _Val) const
+	{
+		for(const_iterator i = begin(); i != end(); ++i)
+			if(::equal(*i, _Val))
+				return i;
+		return 0;
+	}
+
+
+template <class InputIterator1,
+	class InputIterator2,
+	class OutputIterator> inline
+	OutputIterator _merge(InputIterator1 first1, InputIterator1 last1,
+						  InputIterator2 first2, InputIterator2 last2,
+						  OutputIterator result)
+	{
+	for (; first1 != last1; )
+		*result++ = *first1++;
+	for (; first2 != last2; )
+		*result++ = *first2++;
+	return result;
+	}
+
+
+template <class InputIterator1,
+	class InputIterator2,
+	class OutputIterator> inline
+	OutputIterator _union(InputIterator1 first1, InputIterator1 last1,
+						  InputIterator2 first2, InputIterator2 last2,
+						  OutputIterator result)
+	{
+	OutputIterator start = result;
+	for (; first1 != last1; ++first1)
+		{
+		for (OutputIterator i = start; i != result; ++i)
+			if (*first1 == *i)
+				goto next1;
+
+		*result++ = *first1;
+		next1:
+			;
+		}
+	for (; first2 != last2; ++first2)
+		{
+		for (OutputIterator i = start; i != result; ++i)
+			if (*first2 == *i)
+				goto next2;
+		*result++ = *first2;
+		next2:
+			;
+		}
+
+	return result;
+	}
+
+
+template <class InputIterator1,
+	class InputIterator2,
+	class OutputIterator,
+	class Comparator> inline
+	OutputIterator _union(InputIterator1 first1, InputIterator1 last1,
+						  InputIterator2 first2, InputIterator2 last2,
+						  OutputIterator result, Comparator equal)
+	{
+	OutputIterator start = result;
+	for (; first1 != last1; ++first1)
+		{
+		for (OutputIterator i = start; i != result; ++i)
+			if (equal(*first1, *i))
+				goto next1;
+
+		*result++ = *first1;
+		next1:
+			;
+		}
+	for (; first2 != last2; ++first2)
+		{
+		for (OutputIterator i = start; i != result; ++i)
+			if (equal(*first2, *i))
+				goto next2;
+		*result++ = *first2;
+		next2:
+			;
+		}
+
+	return result;
+	}
+
+
+template <class InputIterator1,
+	class InputIterator2,
+	class OutputIterator> inline
+	OutputIterator _intersection(InputIterator1 first1, InputIterator1 last1,
+								 InputIterator2 first2, InputIterator2 last2,
+								 OutputIterator result)
+	{
+	for (; first1 != last1; ++first1)
+		for (InputIterator2 i = first2; i != last2; ++i)
+			if (*first1 == *i)
+				{ *result++ = *first1; break; }
+	return result;
+	}
+
+
+template <class InputIterator1,
+	class InputIterator2,
+	class OutputIterator,
+	class Comparator> inline
+	OutputIterator _intersection(InputIterator1 first1, InputIterator1 last1,
+								 InputIterator2 first2, InputIterator2 last2,
+								 OutputIterator result, Comparator equal)
+	{
+	for (; first1 != last1; ++first1)
+		for (InputIterator2 i = first2; i != last2; ++i)
+			if (equal(*first1, *i))
+				{ *result++ = *first1; break; }
+	return result;
+	}
+
+
+template <class InputIterator1,
+	class InputIterator2,
+	class OutputIterator> inline
+	OutputIterator _difference(InputIterator1 first1, InputIterator1 last1,
+							   InputIterator2 first2, InputIterator2 last2,
+							   OutputIterator result)
+	{
+	for (; first1 != last1; ++first1)
+		{
+		for (InputIterator2 i = first2; i != last2; ++i)
+			if (*first1 == *i)
+				goto next;
+		*result++ = *first1;
+		next:
+			;
+		}
+	return result;
+	}
+
+
+template <class InputIterator1,
+	class InputIterator2,
+	class OutputIterator,
+	class Comparator> inline
+	OutputIterator _difference(InputIterator1 first1, InputIterator1 last1,
+							   InputIterator2 first2, InputIterator2 last2,
+							   OutputIterator result, Comparator equal)
+	{
+	for (; first1 != last1; ++first1)
+		{
+		for (InputIterator2 i = first2; i != last2; ++i)
+			if (equal(*first1, *i))
+				goto next;
+		*result++ = *first1;
+		next:
+			;
+		}
+	return result;
+	}
+
+
+
+
+
+
+//*****************************************************************************
+//								LINESEG2
+//*****************************************************************************
+
+template<class _VectorType>
+struct LINESEG
+{
+	LINESEG()
+		{
+		}
+
+	LINESEG( const _VectorType& ab, const _VectorType& cd )
+		: Start(ab), End(cd)
+		{
+		}
+
+	LINESEG( const _VectorType& a, const _VectorType& b,
+			 const _VectorType& c, const _VectorType& d )
+			 : Start(b - a), End(d - c)
+		{
+		}
+
+    LINESEG operator - () const
+		{	// negate
+		return LINESEG(-Start, -End);
+		}
+
+	_VectorType& operator [](unsigned i)
+		{	// transmit as array
+		return (&Start)[i];
+		}
+
+	const _VectorType& operator [](unsigned i) const
+		{	// transmit as array
+		return (&Start)[i];
+		}
+
+	bool isCircuit(const LINESEG& _Seg) const
+		{	// available circuit?
+		return ::equal(Start, _Seg.End);
+		}
+
+	unsigned isConnect(const LINESEG& _Seg) const
+		{	// check lineseg connection: 1 - yes, 2 - yes, but need revert, 0 - none
+		return ::equal(End, _Seg.Start) ? 1 : ::equal(End, _Seg.End) ? 2 : 0;
+		}
+
+	void Swap()
+		{	// start<->end swap
+		_VectorType tmp;
+		tmp = Start, Start = End, End = tmp;
+		}
+
+	unsigned isCollinear(const LINESEG& _Seg) const
+		{	// two segments are connected & collinear (for optimize stuff)
+			// (return connect side as in isConnect)
+			//if((End - Start ^ _Seg.End - _Seg.Start).isFZero())	// check: is parallel?
+			VECTOR3 a(End - Start), b(_Seg.End - _Seg.Start);
+			a.Normalize(), b.Normalize();
+			if(::equal(a, b))
+			{
+				if(::equal(End, _Seg.Start))					// def connect side
+					return 1;
+				else if(::equal(Start, _Seg.End))				// def connect side
+					return 2;
+			}
+			return 0;
+		}
+
+	bool operator == (const LINESEG& rhs) const
+		{
+		//return	Start == rhs.Start && End == rhs.End ||
+		//		Start == rhs.End && End == rhs.Start;
+		// float eq version
+		return	::equal(Start, rhs.Start) && ::equal(End, rhs.End) ||
+				::equal(Start, rhs.End) && ::equal(End, rhs.Start);
+		}
+
+	bool operator != (const LINESEG& rhs) const
+		{
+		return !(*this == rhs);
+		}
+
+	_VectorType Start, End;
+};
+
+typedef LINESEG<VECTOR2> LINESEG2;
+typedef LINESEG<VECTOR3> LINESEG3;
+
+
+
+//*****************************************************************************
+//								LINESEG2LIST
+//*****************************************************************************
+
+template<class _VectorType>
+struct LINESEGLIST
+	: public vectorex<LINESEG<_VectorType> >
+{
+	typedef LINESEG<_VectorType> _LineSegType;
+	typedef vectorex<_LineSegType> _Base;
+	typedef vectorex<_VectorType> vectorlist;
+
+	// ctors
+	LINESEGLIST()
+		{
+		}
+
+	explicit LINESEGLIST(size_type _Reserve)
+		: _Base(_Reserve)
+		{
+		}
+
+	LINESEGLIST(size_type _Count, const _LineSegType& _Val)
+		: _Base(_Count, _Val)
+		{
+		}
+
+	explicit LINESEGLIST(const vectorlist& vlist)
+		: _Base(vlist.size() * 2)
+		{
+		for(vectorlist::const_iterator v1 = vlist.begin(), v2 = v1 + 1;
+			v1 != vlist.end();
+			++v1, ++v2 = v2 == vlist.end() ? vlist.begin() : v2)
+				_Base::push_back(_LineSegType(*v1, *v2));
+		}
+
+	void Add(const vectorlist& vlist, bool unique)
+		{
+		reserve(size() + vlist.size());
+		for(vectorlist::const_iterator v1 = vlist.begin(), v2 = v1 + 1;
+			v1 != vlist.end();
+			++v1, v2 = ++v2 == vlist.end() ? vlist.begin() : v2)
+			{
+				const LINESEG<_VectorType> seg(*v1, *v2);
+				if(unique)
+				{
+					iterator i;
+					for(i = begin(); i != end(); ++i)	// find unique
+						if(seg == *i)
+							break;
+					if(i == end())
+						push_back(seg);
+				}
+				else
+					push_back(seg);
+			}
+		}
+
+	void OptimizeChain()
+		{
+		for(LINESEGLIST::iterator i1 = begin(); i1 != end(); ++i1)
+			for(LINESEGLIST::iterator i2 = begin(); i2 != end(); ++i2)
+				if(i1 != i2)
+				{
+					if(*i1 == *i2)						// find duplicated segments
+					{
+						erase(i2);
+						erase(i1);
+						i1 = i2 = begin();
+					}
+					else
+					{
+						switch(i1->isCollinear(*i2))	// find collinear segments
+						{
+						case 1:
+							i1->End = i2->End;
+							erase(i2);
+							i1 = i2 = begin();
+							break;
+						case 2:
+							i1->Start = i2->Start;
+							erase(i2);
+							i1 = i2 = begin();
+							break;
+						}
+					}
+				}
+		}
+
+	// csg
+	unsigned isConnect(const _LineSegType& _Val) const
+		{	// check lineseg connection: 1 - yes, 2 - need revert, 0 - none
+		return back().isConnect(_Val);
+		}
+
+	bool isCircuit() const
+		{	// available circuit ?
+		return front().isCircuit(back());
+		}
+
+	int FindLineSegConnection(const _LineSegType& src)
+		{
+		for(LINESEGLIST::iterator i = begin(); i != end(); ++i)
+			if(src.isConnect(*i))
+				return std::distance(begin(), i);
+		return -1;
+		/* 
+		**	this does not work - _LineSegType::isConnect ref-to-ref in adapter:
+		**	return std::find_if(begin(), end(),
+		**	std::bind2nd(std::mem_fun_ref(&_LineSegType::isConnect), src)) - begin();
+		*/
+		}
+
+	bool BuildClosedCircuit()
+		{
+		LINESEGLIST tmp(*this); this->resize(1);
+		tmp.erase(tmp.begin());						// move seg
+		for(LINESEGLIST::iterator i = tmp.begin(); i != tmp.end() && !tmp.empty(); )
+			switch(isConnect(*i))
+			{
+			case 2: i->Swap();
+			case 1:
+				push_back(*i), tmp.erase(i);		// move seg
+				i = tmp.begin();
+				break;
+			default:
+				++i;
+				break;
+			}
+
+		return tmp.empty();
+		}
+};
+
+typedef LINESEGLIST<VECTOR2> LINESEG2LIST;
+typedef LINESEGLIST<VECTOR3> LINESEG3LIST;
+
+
+template<class _VectorType, class InputIterator>
+	void move(LINESEGLIST<_VectorType>& _To, LINESEGLIST<_VectorType>& _From,
+			  InputIterator _Pos)
+	{
+		_To.push_back(*_Pos);
+		_From.erase(_Pos);
+	}
+
+template<class _VectorType>
+	void move<>(LINESEGLIST<_VectorType>& _To, LINESEGLIST<_VectorType>& _From,
+					  size_t _Pos)
+	{
+		_To.push_back(_From[_Pos]);
+		_From.erase(_Pos);
+	}
+
+
+/*
+=============================
+CSGBuildClosedCircuit
+=============================
+*/
+template<class _VectorType>
+	unsigned CSGBuildClosedCircuit(const LINESEGLIST<_VectorType>* src,
+								  LINESEGLIST<_VectorType>* dest1,
+								  LINESEGLIST<_VectorType>* dest2 = 0)
+	{
+	if(src->empty())
+		return 0;
+
+	unsigned pos = 0;			unsigned dbg;
+	LINESEGLIST<_VectorType>* dest[4] = {dest1, dest2}, tmp = *src;
+
+	move(*dest[pos], tmp, tmp.begin());
+	while(!tmp.empty())
+		{
+		for(LINESEGLIST<_VectorType>::iterator i = tmp.begin(); i < tmp.end(); ++i)	// NOTE: `<` instead `!=`: потому что tmp очищается внутри цикла - т.е. условие должно быть иным!
+			{
+			if(dest[pos]->isCircuit())				// build next circuit
+				{
+				move(*dest[++pos], tmp, i);
+				continue;
+				}
+			/// *** FLOAT_EQ() !!!!! *** ///
+			// #define FLOAT_EQ(x,v) (((v - EPSILON) < x) && (x <( v + EPSILON)))
+			switch(dbg = dest[pos]->isConnect(*i))
+				{
+				case 2: i->Swap();					// need revert segment (start<->end)
+				case 1:
+					move(*dest[pos], tmp, i);		// ... and add to seglist
+					break;
+				}
+			}
+		}
+
+	return	pos + 1;
+	}
+
+
+
+
+
+//*****************************************************************************
+//								LINE2 UTILITES
+//*****************************************************************************
+
+
+/*
+===========================================================================
+	Routine:
+		isCoincide( const IMPLICITLINE2& line1, const IMPLICITLINE2& line2 )
+		isCoincide( const PARAMETRICLINE2& line1, const PARAMETRICLINE2& line2 )
+
+	Description:
+		Check coincide line1 and line2
+
+	Parameters:
+		line1		- input line 1
+		line2		- input line 2
+
+	Return Values:
+		boolean result
+
+	Remarks:
+		implicit:	two lines are coincide if F1 x F2 = O3;
+		parametric: two lines are coincide if V1 ^ V2 && V1 ^ (p20 - p10) = 0;
+===========================================================================
+*/
+inline bool isCoincide( const IMPLICITLINE2& line1, const IMPLICITLINE2& line2 )
+	{
+	return (line1 ^ line2).isZero();
+	}
+
+inline bool isCoincide( const PARAMETRICLINE2& line1, const PARAMETRICLINE2& line2 )
+	{
+	return (line1.V ^ line2.V) == 0 && (line1.V ^ (line2.P0 - line1.P0)) == 0;
+	}
+
+
+
+
+/*
+===========================================================================
+	Routine:
+		isParallel( const IMPLICITLINE2& line1, const IMPLICITLINE2& line2 )
+		isParallel( const PARAMETRICLINE2& line1, const PARAMETRICLINE2& line2 )
+
+	Description:
+		Check lines parallel
+
+	Parameters:
+		line1		- input line 1
+		line2		- input line 2
+
+	Return Values:
+		boolean result
+
+	Remarks:
+		implicit:	two lines are parallel if N1 x N2 = 0;
+		parametric: two lines are parallel if V1 x V2 = 0;
+===========================================================================
+*/
+inline bool isParallel( const IMPLICITLINE2& line1, const IMPLICITLINE2& line2 )
+	{
+	return (line1.N ^ line2.N) == 0;
+	}
+
+inline bool isParallel( const PARAMETRICLINE2& line1, const PARAMETRICLINE2& line2 )
+	{
+	return (line1.V ^ line2.V) == 0;
+	}
+
+
+
+/*
+===========================================================================
+	Routine:
+		isOrthogonal( const IMPLICITLINE2& line1, const IMPLICITLINE2& line2 )
+		isOrthogonal( const PARAMETRICLINE2& line1, const PARAMETRICLINE2& line2 )
+
+	Description:
+		Check lines orthogonal
+
+	Parameters:
+		line1		- input line 1
+		line2		- input line 2
+
+	Return Values:
+		boolean result
+
+	Remarks:
+		implicit:	two lines are orthogonal if N1 | N2 = 0;
+		parametric: two lines are orthogonal if V1 | V2 = 0;
+===========================================================================
+*/
+inline bool isOrthogonal( const IMPLICITLINE2& line1, const IMPLICITLINE2& line2 )
+	{
+	return (line1.N | line2.N) == 0;
+	}
+
+inline bool isOrthogonal( const PARAMETRICLINE2& line1, const PARAMETRICLINE2& line2 )
+	{
+	return (line1.V | line2.V) == 0;
+	}
+
+
+
+/*
+===========================================================================
+	Routine:
+		Distance( const IMPLICITLINE2& line1, const IMPLICITLINE2& line2 )
+		Distance( const PARAMETRICLINE2& line1, const PARAMETRICLINE2& line2 )
+
+	Description:
+		Distance between parallel lines
+
+	Parameters:
+		line1		- input line 1
+		line2		- input line 2
+
+	Return Values:
+		FLOAT distance
+
+	Remarks:
+		implicit:	Distance between parallel straight linees is equal:
+					d = | prN1(p20 - p10) | = | (p20 - p10)|N1norm |
+
+		parametric: Distance between parallel straight linees in normal form are:
+					d = | p20 - p10 - ((p20 -p10)|Vnorm )Vnorm |
+
+		Lines must be parallel!
+===========================================================================
+*/
+inline FLOAT Distance( const IMPLICITLINE2& line1, const IMPLICITLINE2& line2 )
+	{
+	return abs((line1.GetAnyPoint() - line2.GetAnyPoint()) | (line1.N.GetNormalized()));
+	}
+
+inline FLOAT Distance( const PARAMETRICLINE2& line1, const PARAMETRICLINE2& line2 )
+	{
+	VECTOR2 V1norm = line1.V.GetNormalized(),
+			P20_P10 = line2.P0 - line1.P0;
+
+	return (P20_P10 - V1norm * (P20_P10 | V1norm)).Magnitude();
+	}
+
+
+
+/*
+===========================================================================
+	Routine:
+		Distance( const IMPLICITLINE2& line, const VECTOR2& point )
+		Distance( const PARAMETRICLINE2& line, const VECTOR2& point )
+
+	Description:
+		Distance between line and point.
+
+	Parameters:
+		line1		- input line
+		point		- input point
+
+	Return Values:
+		FLOAT distance
+
+	Remarks:
+		implicit:	Distance between line and point `q`:
+						|q | F|
+					d =	------- = |prN(q - p0)| = | (q - p0)|Nnorm |
+						|N|
+
+		parametric: Distance between parametric line and point `q`:
+					[|q - p0|]
+				d = [|		|] = | q = p0 - prV(q - p0) |
+					[|Vnorm |]			= | q - p0 - ((q - p0) | Vnorm )Vnorm |
+===========================================================================
+*/
+inline FLOAT Distance( const IMPLICITLINE2& line, const VECTOR2& point )
+	{
+	return abs((point - line.GetAnyPoint()) | (line.N.GetNormalized()));
+	}
+
+inline FLOAT Distance( const PARAMETRICLINE2& line, const VECTOR2& point )
+	{
+	VECTOR2 Vnorm = line.V.GetNormalized(),
+			Q_P0 = point - line.P0;
+	return (Q_P0 - Vnorm * (( Q_P0 ) | Vnorm )).Magnitude();
+	}
+
+
+
+/*
+===========================================================================
+	Routine:
+		Perpendicular( const IMPLICITLINE2& line, const VECTOR2& point )
+		PARAMETRICLINE2 Perpendicular( const PARAMETRICLINE2& line,
+							const VECTOR2& point )
+
+	Description:
+		Perpendicular dropped from a point q on a straight line.
+
+	Parameters:
+		line1		- input line
+		line2		- input point
+
+	Return Values:
+		Perpendicular 2D line equation.
+
+	Remarks:
+		implicit:	Ny(x - qx) - Nx(y - qy) = 0 => F(eq) = [ Nperp, -Nperp|q ]
+		parametric:	Pperp = q + Nt, N = [Vy, -Vx]
+===========================================================================
+*/
+inline IMPLICITLINE2 Perpendicular( const IMPLICITLINE2& line, const VECTOR2& point )
+	{
+	VECTOR2 N_perp = line.N.GetPerpendicular();
+	return IMPLICITLINE2(N_perp, -N_perp | point);
+	}
+
+inline PARAMETRICLINE2 Perpendicular( const PARAMETRICLINE2& line, const VECTOR2& point )
+	{
+	return PARAMETRICLINE2(point, line.V.GetPerpendicular());
+	}
+
+
+
+
+/*
+===========================================================================
+	Routine:
+		MirroringPoint( const IMPLICITLINE2& mirror_line, const VECTOR2& point )
+
+	Description:
+		Mirror point from line.
+
+	Parameters:
+		mirror_line	- mirror line
+		point		- mirroring point
+
+	Return Values:
+		Mirrored point coords.
+
+	Remarks:
+		The mirroring of a point q lays on a perpendicular to a straight line
+		On distance 2d from q in the side opposite to a projection of a vector
+		q - p0 on a normal N.
+
+		implicit:	q` = | q - 2 ((q - p0) | Nnorm) Nnorm |
+		parametric:	q` = q - 2(q - p0 - prV(q - p0)) =
+							2p0 - q - 2((q - p0)|Vnorm)Vnorm
+===========================================================================
+*/
+inline VECTOR2 MirroringPoint( const IMPLICITLINE2& mirror_line, const VECTOR2& point )
+	{
+	VECTOR2 normalized = mirror_line.N.GetNormalized();
+	return point - normalized * 2 * ((point - mirror_line.GetAnyPoint()) | normalized);
+	}
+
+inline VECTOR2 MirroringPoint(const PARAMETRICLINE2& mirror_line, const VECTOR2& point)
+	{
+	VECTOR2 Vnorm = mirror_line.V.GetNormalized();
+	return mirror_line.P0 * 2 - point + Vnorm * 2 * ( (point - mirror_line.P0) | Vnorm );
+	}
+
+
+
+
+/*
+===========================================================================
+	Routine:
+		Intersection( const IMPLICITLINE2& line1,
+					  const IMPLICITLINE2& line2,
+					  VECTOR2& cross )
+
+		Intersection(const PARAMETRICLINE2& line1,
+					 const PARAMETRICLINE2& line2,
+					 VECTOR2& cross)
+
+	Description:
+		Get intersection point
+
+	Parameters:
+		line1	- src line 1
+		line2	- src line 2
+		cross	- intersection point
+
+	Return Values:
+		if coincide - return -1,
+		if parallel - return 0,
+		if intersect - intersection point coord returned
+
+	Remarks:
+
+		implicit: 
+			q[N1T, N2T] = [p10 | N1, p20 | N2] =>
+				q = [p10 | N1, p20 | N2][N1T, N2T]-1,
+			N1 x N2 != 0
+
+		parametric:
+			p10 + V1t1 = p20 + V2t2 => [t1, t2] = (p20 - p10)[V1, -V2],
+			V1 x V2 != 0
+===========================================================================
+*/
+inline 
+int Intersection(const IMPLICITLINE2& line1,
+				 const IMPLICITLINE2& line2,
+				 VECTOR2& cross )
+	{
+		if (isParallel(line1, line2))
+		{
+			if (isCoincide(line1, line2))
+				return -1;
+			return 0;
+		}
+		else
+		{
+			cross = VECTOR2(-line1.N * (line1.GetAnyPoint() | line1.N),
+							line2.N * (line2.GetAnyPoint() | line2.N));
+			return 1;
+		}
+	}
+
+inline 
+int Intersection(const PARAMETRICLINE2& line1,
+				 const PARAMETRICLINE2& line2,
+				 VECTOR2& cross)
+	{
+		if (isParallel(line1, line2))
+		{
+			if (isCoincide(line1, line2))
+				return -1;
+			return 0;
+		}
+
+		VECTOR2 line2_perp(line2.V.GetPerpendicular());
+		cross = line1.P0 + line1.V *
+					((line2_perp | (line2.P0 - line1.P0)) / (line2_perp | line1.V));	// t = (d† • c) / (d† • b)
+		return 1;
+	}
+
+
+
+
+/*
+===========================================================================
+	Routine:
+		OrientationConv(const IMPLICITLINE2& line, const VECTOR2& point)
+		OrientationConv(const PARAMETRICLINE2& line, const VECTOR2& point)
+
+	Description:
+		Ориентация точки отностительно нормали 2D прямой.
+
+	Parameters:
+		line	- src line
+		point	- src point
+
+	Return Values:
+		at left - return -1,
+		on line - return 0,
+		at right - return 1
+
+	Remarks:
+		Тест ориентации точки q отностительно прямой заключается в проверке
+		знака числа f(p). Все точки q справа от прямой (т.е. со стороны ее нормали)
+		дают значения f(p) > 0, а слева - f(p) < 0.
+
+		nf2(a,b,p) = |p - a|
+					 |b - a|
+===========================================================================
+*/
+inline int OrientationConv( const IMPLICITLINE2& line, const VECTOR2& point )
+	{
+	FLOAT dist = line | point;
+	return	dist > 0 ? 1						// at right
+			: dist == 0 ? 0						// on line
+			: -1;								// at left
+	}
+
+inline int OrientationConv(const PARAMETRICLINE2& line, const VECTOR2& point)
+	{
+	float dist = (point - line.P0) ^ line.V;
+	return	dist > 0 ? 1						// at right
+			: dist == 0 ? 0						// on line
+			: -1;								// at left
+	}
+
+
+
+
+/*
+===========================================================================
+	Routine:
+		Angle( const IMPLICITLINE2& line1, const IMPLICITLINE2& line2)
+		Angle( const PARAMETRICLINE2& line1, const PARAMETRICLINE2& line2)
+
+	Description:
+		Angle (in radians!) between two line
+
+	Parameters:
+		line1	- input line 1
+		line2	- input line 2
+
+	Return Values:
+		angle (in radians)
+
+	Remarks:
+		see Angle() proc from "VECTOR2"
+===========================================================================
+*/
+inline FLOAT Angle( const IMPLICITLINE2& line1, const IMPLICITLINE2& line2)
+	{
+	return Angle(line1.N, line2.N);
+	}
+
+inline FLOAT Angle( const PARAMETRICLINE2& line1, const PARAMETRICLINE2& line2)
+	{
+	return Angle(line1.V, line2.V);
+	}
+
+
+
+
+
+
+//*************************************************************************
+//							PARAMETRICLINE3
+//*************************************************************************
+
+struct PARAMETRICLINE3
+{
+	PARAMETRICLINE3()
+		{
+		}
+
+	PARAMETRICLINE3(const VECTOR3& _P0, const VECTOR3& _V)
+		: P0(_P0), V(_V)
+		{
+		}
+
+	// unary operators
+    PARAMETRICLINE3 operator + () const
+		{
+		return *this;
+		}
+
+    PARAMETRICLINE3 operator - () const
+		{
+		return PARAMETRICLINE3(-P0, -V);
+		}
+
+	// compare
+    bool operator == ( const PARAMETRICLINE3& _Right ) const
+		{
+		return P0 == _Right.P0 && V == _Right.V;
+		}
+
+    bool operator != ( const PARAMETRICLINE3& _Right) const
+		{
+		return P0 != _Right.P0 || V != _Right.V;
+		}
+
+	bool isZero() const
+		{
+		return P0.isZero() && V.isZero();
+		}
+
+	// math
+	VECTOR3 Lerp( const FLOAT t ) const
+		{
+		return P0 + V * t;
+		}
+
+	friend bool isOnLine(const PARAMETRICLINE3&, const VECTOR3&);
+	friend PARAMETRICLINE3 Perpendicular(const PARAMETRICLINE3&, const VECTOR3&);
+	friend FLOAT Distance(const PARAMETRICLINE3&, const VECTOR3&);
+	friend struct IMPLICITPLANE PlaneEqParLine(const PARAMETRICLINE3&,
+												const PARAMETRICLINE3&);
+
+	VECTOR3 P0, V;
+};
+
+
+
+//*************************************************************************
+//							PARAMETRICLINE3 UTILITES
+//*************************************************************************
+
+// принадлежность точки q прямой:
+inline bool isOnLine( const PARAMETRICLINE3& line, const VECTOR3& q )
+	{
+	return ((q - line.P0) ^ line.V).isZero();
+	}
+
+// уравнение перпендикуляра, опушенного из точки q на прямую:
+inline PARAMETRICLINE3 Perpendicular( const PARAMETRICLINE3& line, const VECTOR3& q )
+	{
+	return	PARAMETRICLINE3(q, ((q - line.P0) ^ line.V) ^ line.V);
+	}
+
+// расстояние от точки q до прямой:
+inline FLOAT Distance( const PARAMETRICLINE3& line, const VECTOR3& q )
+	{
+	return	((q - line.P0) ^ line.V).Magnitude() / line.V.Magnitude();
+	}
+
+// тест совпадения прямых:
+inline bool isCoincide( const PARAMETRICLINE3& line1, const PARAMETRICLINE3& line2 )
+	{
+	return	(line1.V ^ line2.V).isZero() &&
+				(line1.V ^ (line2.P0 - line1.P0)).isZero();
+	}
+
+// тест параллельности прямых:
+inline bool isParallel( const PARAMETRICLINE3& line1, const PARAMETRICLINE3& line2 )
+	{
+	return	(line1.V ^ line2.V).isZero();
+	}
+
+// тест ортогональности прямых:
+inline bool isOrthogonal( const PARAMETRICLINE3& line1, const PARAMETRICLINE3& line2 )
+	{
+	return	(line1.V | line2.V) == 0;
+	}
+
+// расстояние между параллельными прямыми:
+inline FLOAT Distance( const PARAMETRICLINE3& line1, const PARAMETRICLINE3& line2 )
+	{
+	return	((line2.P0 - line1.P0) ^ line1.V.GetNormalized()).Magnitude();
+	}
+
+// прямые лежат в одной плоскости ?:
+inline bool isInPlane( const PARAMETRICLINE3& line1, const PARAMETRICLINE3& line2 )
+	{
+	return ((line2.P0 - line1.P0) | (line1.V ^ line2.V)) == 0;
+	}
+
+// и угол их пересечения равен:
+inline FLOAT Angle( const PARAMETRICLINE3& line1, const PARAMETRICLINE3& line2 )
+	{
+	return ::acos(line1.V.GetNormalized() | line2.V.GetNormalized());
+	}
+
+
+
+
+
+
+
+
+//*************************************************************************
+//							MATRIX4
+//*************************************************************************
+
+struct MATRIX4
+{
+	MATRIX4()
+		{
+		}
+
+	explicit MATRIX4( const FLOAT* _pF )
+		: _11(_pF[0]), _12(_pF[1]), _21(_pF[2]), _22(_pF[3])
+		{
+		}
+
+	MATRIX4( const FLOAT f11, const FLOAT f12,
+			 const FLOAT f21, const FLOAT f22 )
+		: _11(f11), _12(f12), _21(f21), _22(f22)
+		{
+		}
+
+	MATRIX4( const VECTOR2& ab, const VECTOR2& cd )
+		: V1(ab), V2(cd)
+		{
+		}
+
+	MATRIX4( const VECTOR2& a, const VECTOR2& b,
+			 const VECTOR2& c, const VECTOR2& d )
+		: V1(b - a), V2(d - c)
+		{
+		}
+
+	void operator()( const FLOAT f11, const FLOAT f12,
+					 const FLOAT f21, const FLOAT f22 )
+		{	// reinit
+		_11 = f11, _12 = f12, _21 = f21, _22 = f22;
+		}
+
+		
+	// access grants
+	FLOAT& operator () (unsigned _Row, unsigned _Col)
+		{
+		return M[_Row * sizeof(FLOAT) + _Col];
+		}
+
+	FLOAT operator () (unsigned _Row, unsigned _Col) const
+		{
+		return M[_Row * sizeof(FLOAT) + _Col];
+		}
+
+	// casting operators
+	operator FLOAT* ()
+		{
+		return M;
+		}
+
+	operator const FLOAT* () const
+		{
+		return M;
+		}
+
+	// assignment operators
+	MATRIX4& operator *= ( const MATRIX4& _Mat )
+		{
+		MATRIX4 tmp(*this);
+		M[0] = tmp[0] * _Mat[0] + tmp[1] * _Mat[2];
+		M[1] = tmp[0] * _Mat[1] + tmp[1] * _Mat[3];
+		M[2] = tmp[2] * _Mat[0] + tmp[3] * _Mat[2];
+		M[3] = tmp[2] * _Mat[1] + tmp[3] * _Mat[3];
+		return *this;
+		}
+
+	MATRIX4& operator += ( const MATRIX4& _Mat )
+		{
+		M[0] += _Mat[0];
+		M[1] += _Mat[1];
+		M[2] += _Mat[2];
+		M[3] += _Mat[3];
+		}
+
+	MATRIX4& operator -= ( const MATRIX4& _Mat )
+		{
+		M[0] -= _Mat[0];
+		M[1] -= _Mat[1];
+		M[2] -= _Mat[2];
+		M[3] -= _Mat[3];
+		}
+
+	MATRIX4& operator *= ( const FLOAT _K )
+		{
+		M[0] *= _K;
+		M[1] *= _K;
+		M[2] *= _K;
+		M[3] *= _K;
+		}
+
+	MATRIX4& operator /= ( const FLOAT _K )
+		{
+		M[0] /= _K;
+		M[1] /= _K;
+		M[2] /= _K;
+		M[3] /= _K;
+		}
+
+	// unary operators
+	MATRIX4 operator + () const
+		{
+		return *this;
+		}
+
+	MATRIX4 operator - () const
+		{
+		return MATRIX4( -M[0], -M[1], -M[2], -M[3] );
+		}
+
+	// binary operators
+	MATRIX4 operator * ( const MATRIX4& _Mat ) const
+		{
+		MATRIX4 ret(*this);
+		ret *= _Mat;
+		return ret;
+		}
+
+	MATRIX4 operator + ( const MATRIX4& _Mat ) const
+		{
+		return MATRIX4(M[0] + _Mat[0], M[1] + _Mat[1],
+					   M[2] + _Mat[2], M[3] + _Mat[3]);
+		}
+
+	MATRIX4 operator - ( const MATRIX4& _Mat ) const
+		{
+		return MATRIX4(M[0] - _Mat[0], M[1] - _Mat[1],
+					   M[2] - _Mat[2], M[3] - _Mat[3]);
+		}
+
+	MATRIX4 operator * ( FLOAT _K ) const
+		{
+		return MATRIX4(M[0] * _K, M[1] * _K, M[2] * _K, M[3] * _K);
+		}
+
+	MATRIX4 operator / ( FLOAT _K ) const
+		{
+		return MATRIX4(M[0] / _K, M[1] / _K, M[2] / _K, M[3] / _K);
+		}
+
+	// compare
+	bool operator == ( const MATRIX4& _Mat ) const
+		{
+		return	M[0] == _Mat[0] && M[1] == _Mat[1] &&
+				M[2] == _Mat[2] && M[3] == _Mat[3];
+		}
+
+	bool operator != ( const MATRIX4& _Mat ) const
+		{
+		return	M[0] != _Mat[0] || M[1] != _Mat[1] ||
+				M[2] != _Mat[2] || M[3] != _Mat[3];
+		}
+
+	// math
+	FLOAT Determinant() const
+		{
+		return M[0]*M[3] - M[2]*M[1];
+		}
+
+	void LoadTranspose()
+		{ /* tmp = M[1], M[1] = M[2], M[2] = tmp; */
+			__asm mov	eax, this
+			__asm finit
+			__asm fld	[eax + 8]
+			__asm fld	[eax + 4]
+			__asm fstp	[eax + 4]
+			__asm fstp	[eax + 8]
+		}
+
+	MATRIX4 Transpose() const
+		{
+		MATRIX4 ret(*this);
+		ret.LoadTranspose();
+		return ret;
+		}
+
+	void LoadAdjoint()
+		{
+		LoadTranspose();
+		M[1] = -M[1],
+		M[2] = -M[2];
+		}
+
+	MATRIX4 Adjoint() const
+		{
+		MATRIX4 ret(*this);
+		ret.LoadAdjoint();
+		return ret;
+		}
+
+	bool LoadInverse()
+		{
+		FLOAT det = Determinant();
+		if(det)
+			{
+			det = 1.0F / det;
+			*this = MATRIX4(M[3]*det, -M[1]*det, -M[2]*det, M[0]*det);
+			return true;
+			}
+		else return false;
+		}
+
+	bool Inverse(MATRIX4& _Mat) const
+		{
+		_Mat = *this;
+		return _Mat.LoadInverse();
+		}
+
+
+
+	union {
+		FLOAT	M[4];
+		struct { VECTOR2 V1, V2; };
+		struct { FLOAT	_11, _12;
+				 FLOAT	_21, _22; };
+	};
+};
+
+
+
+
+
+
+//*****************************************************************************
+//							MATRIX6 (texture matrix 2x3)
+//*****************************************************************************
+
+struct MATRIX6
+{
+	MATRIX6()
+		{
+		}
+
+	explicit MATRIX6( const FLOAT* _pF )
+		: _11(_pF[0]), _12(_pF[1]),
+		  _13(_pF[2]), _21(_pF[3]),
+		  _22(_pF[4]), _23(_pF[5])
+		{
+		}
+
+	MATRIX6( const FLOAT f11, const FLOAT f12, const FLOAT f13,
+			 const FLOAT f21, const FLOAT f22, const FLOAT f23 )
+		: _11(f11), _12(f12),
+		  _13(f13), _21(f21),
+		  _22(f22), _23(f23)
+		{
+		}
+
+	MATRIX6( const VECTOR3& ab, const VECTOR3& cd )
+		: V1(ab), V2(cd)
+		{
+		}
+
+	MATRIX6( const VECTOR3& a, const VECTOR3& b,
+			 const VECTOR3& c, const VECTOR3& d )
+		: V1(b - a), V2(d - c)
+		{
+		}
+
+	// prepare texture matrix
+	MATRIX6(FLOAT sshift, FLOAT tshift, FLOAT sscale, FLOAT tscale, FLOAT rot)
+//		: _11(sscale * ::cos(DEG2RADF(rot))),
+//		  _12(tscale * ::sin(DEG2RADF(rot))),
+//		  _13(-sscale * ::sin(DEG2RADF(rot))),
+//		  _21(tscale * ::cos(DEG2RADF(rot))),
+//		  _22(sshift),
+//		  _23(tshift)
+		{
+			FLOAT cosa, sina;
+			::sincos(DEG2RADF(rot), &sina, &cosa);
+
+			_11 = sscale * cosa; _12 = tscale * sina; _13 = -sscale * sina;
+			_21 = tscale * cosa; _22 = sshift;		  _23 = tshift;
+		}
+
+	MATRIX6(const VECTOR2& shift, const VECTOR2& scale, FLOAT rot)
+		{	// vector version of previous constructor
+			FLOAT cosa, sina;
+			::sincos(DEG2RADF(rot), &sina, &cosa);
+
+			_11 = scale.S * cosa; _12 = scale.T * sina; _13 = -scale.S * sina;
+			_21 = scale.T * cosa; _22 = shift.S;		_23 = shift.T;
+		}
+
+	// prepare texture matrix & WH-normalization
+	MATRIX6(FLOAT sshift, FLOAT tshift, FLOAT sscale, FLOAT tscale, FLOAT rot,
+			unsigned texw, unsigned texh)
+//		: _11(sscale * ::cos(DEG2RADF(rot)) / texw),
+//		  _12(tscale * ::sin(DEG2RADF(rot)) / texh),
+//		  _13(-sscale * ::sin(DEG2RADF(rot)) / texw),
+//		  _21(tscale * ::cos(DEG2RADF(rot)) / texh),
+//		  _22(sshift / texw),
+//		  _23(tshift / texh)
+		{
+			FLOAT cosa, sina;
+			::sincos(DEG2RADF(rot), &sina, &cosa);
+			sscale /= texw;
+			tscale /= texh;
+			sshift /= texw;
+			tshift /= texh;
+			_11 = sscale * cosa; _12 = tscale * sina; _13 = -sscale * sina;
+			_21 = tscale * cosa; _22 = sshift;		  _23 = tshift;
+		}
+
+	MATRIX6(const VECTOR2& shift, const VECTOR2& scale, FLOAT rot,
+			unsigned texw, unsigned texh)
+		{	// vector version of previous constructor
+		FLOAT cosa, sina,
+			  scales = scale.S / texw, scalet = scale.T / texh;
+		::sincos(DEG2RADF(rot), &sina, &cosa);
+
+		_11 = scales * cosa; _12 = scalet  * sina; _13 = -scales * sina;
+		_21 = scalet * cosa; _22 = shift.S / texw; _23 = shift.T / texh;
+		}
+
+	void Normalize(unsigned texwidth, unsigned texheight)
+		{	// ST-normalization texture matrix [0, ...1]
+		_11 /= texwidth;  _12 /= texheight; _13 /= texwidth;
+		_21 /= texheight; _22 /= texwidth;	_23 /= texheight;
+		}
+
+	void operator()( const FLOAT f11, const FLOAT f12, const FLOAT f13,
+					 const FLOAT f21, const FLOAT f22, const FLOAT f23 )
+		{	// reinit
+		_11 = f11; _12 = f12;
+		_13 = f13; _21 = f21;
+		_22 = f22; _23 = f23;
+		}
+
+		
+	// access grants
+	FLOAT& operator () (unsigned _Row, unsigned _Col)
+		{
+		return M[_Row * sizeof(FLOAT) + _Col];
+		}
+
+	FLOAT operator () (unsigned _Row, unsigned _Col) const
+		{
+		return M[_Row * sizeof(FLOAT) + _Col];
+		}
+
+	// casting operators
+	operator FLOAT* ()
+		{
+		return M;
+		}
+
+	operator const FLOAT* () const
+		{
+		return M;
+		}
+
+
+	// assignment operators
+	MATRIX6& operator *= ( const MATRIX6& _Mat )
+		{
+//		const MATRIX6 tmp(*this);
+//		M[0] = tmp[0] * _Mat[0] + tmp[1] * _Mat[2];
+//		M[1] = tmp[0] * _Mat[1] + tmp[1] * _Mat[3];
+//		M[2] = tmp[2] * _Mat[0] + tmp[3] * _Mat[2];
+//		M[3] = tmp[2] * _Mat[1] + tmp[3] * _Mat[3];
+//		M[4] = tmp[4] + _Mat[4];
+//		M[5] = tmp[5] + _Mat[5];
+//		return *this;
+
+  		const MATRIX6 tmp(*this);
+		M[0] = tmp[0] * _Mat[0] + tmp[1] * _Mat[2];
+		M[1] = tmp[0] * _Mat[1] + tmp[1] * _Mat[3];
+		M[2] = tmp[2] * _Mat[0] + tmp[3] * _Mat[2];
+		M[3] = tmp[2] * _Mat[1] + tmp[3] * _Mat[3];
+		M[4] = tmp[4] * _Mat[0] + tmp[5] * _Mat[2] + _Mat[4];
+		M[5] = tmp[4] * _Mat[1] + tmp[5] * _Mat[3] + _Mat[5];
+		return *this;
+		}
+
+	MATRIX6& operator += ( const MATRIX6& _Mat )
+		{
+		M[0] += _Mat[0]; M[1] += _Mat[1]; M[2] += _Mat[2];
+		M[3] += _Mat[3]; M[4] += _Mat[4]; M[5] += _Mat[5];
+		return *this;
+		}
+
+	MATRIX6& operator -= ( const MATRIX6& _Mat )
+		{
+		M[0] -= _Mat[0]; M[1] -= _Mat[1]; M[2] -= _Mat[2];
+		M[3] -= _Mat[3]; M[4] -= _Mat[4]; M[5] -= _Mat[5];
+		return *this;
+		}
+
+	MATRIX6& operator *= ( FLOAT _K )
+		{
+		M[0] *= _K; M[1] *= _K; M[2] *= _K;
+		M[3] *= _K; M[4] *= _K; M[5] *= _K;
+		return *this;
+		}
+
+	MATRIX6& operator /= ( FLOAT _K )
+		{
+		M[0] /= _K; M[1] /= _K; M[2] /= _K;
+		M[3] /= _K; M[4] /= _K; M[5] /= _K;
+		return *this;
+		}
+
+
+	// unary operators
+	MATRIX6 operator + () const
+		{
+		return	*this;
+		}
+
+	MATRIX6 operator - () const
+		{
+		return	MATRIX6(-M[0], -M[1], -M[2],
+						-M[3], -M[4], -M[5]);
+		}
+
+	
+	// binary operators
+	MATRIX6 operator * ( const MATRIX6& _Mat ) const
+		{
+		MATRIX6 ret(*this);
+		ret *= _Mat;
+		return ret;
+		}
+
+	MATRIX6 operator + ( const MATRIX6& _Mat ) const
+		{
+		return	MATRIX6(M[0] + _Mat[0], M[1] + _Mat[1], M[2] + _Mat[2],
+						M[3] + _Mat[3], M[4] + _Mat[4], M[5] + _Mat[5]);
+		}
+
+	MATRIX6 operator - ( const MATRIX6& _Mat ) const
+		{
+		return	MATRIX6(M[0] - _Mat[0], M[1] - _Mat[1], M[2] - _Mat[2],
+						M[3] - _Mat[3], M[4] - _Mat[4], M[5] - _Mat[5]);
+		}
+
+	MATRIX6 operator * ( FLOAT _K ) const
+		{
+		return	MATRIX6(M[0] * _K, M[1] * _K, M[2] * _K,
+						M[3] * _K, M[4] * _K, M[5] * _K);
+		}
+
+	MATRIX6 operator / ( FLOAT _K ) const
+		{
+		return	MATRIX6(M[0] / _K, M[1] / _K, M[2] / _K,
+						M[3] / _K, M[4] / _K, M[5] / _K);
+		}
+
+	// compare
+	bool operator == ( const MATRIX6& _Mat ) const
+		{
+		__asm {
+			xor		eax, eax
+			mov		esi, this
+			mov		edi, _Mat
+			mov		ecx, 6
+			repe	cmpsd
+			sete	al;
+		};
+		//return	M[0] == _Mat[0] && M[1] == _Mat[1] && M[2] == _Mat[2] &&
+		//			M[3] == _Mat[3] && M[4] == _Mat[4] && M[5] == _Mat[5] &&
+		//			M[6] == _Mat[6] && M[7] == _Mat[7] && M[8] == _Mat[8];
+		}
+
+	bool operator != ( const MATRIX6& _Mat ) const
+		{
+		return !(*this == _Mat);
+		//return	M[0] != _Mat[0] || M[1] != _Mat[1] || M[2] != _Mat[2] ||
+		//			M[3] != _Mat[3] || M[4] != _Mat[4] || M[5] != _Mat[5] ||
+		//			M[6] != _Mat[6] || M[7] != _Mat[7] || M[8] != _Mat[8];
+		}
+
+
+
+
+	// transformations
+	void LoadIdentity()
+		{
+		M[0] = 1; M[1] = 0;
+		M[2] = 0; M[3] = 1;
+		M[4] = 0; M[5] = 0;
+		}
+
+	bool isIdentity() const
+		{
+		return	M[0] == 1 && M[1] == 0 &&
+				M[2] == 0 && M[3] == 1 &&
+				M[4] == 0 && M[5] == 0;
+		}
+
+	void LoadZero()
+		{
+		M[0] = 0; M[1] = 0;
+		M[2] = 0; M[3] = 0;
+		M[4] = 0; M[5] = 0;
+		}
+
+	void LoadTranslate(FLOAT _X, FLOAT _Y)
+		{
+		M[0] = 1;  M[1] = 0;
+		M[2] = 0;  M[3] = 1;
+		M[4] = _X; M[5] = _Y;
+		}
+
+	void LoadTranslate(const VECTOR2& _Vec)
+		{
+		MATRIX6::LoadTranslate(_Vec.X, _Vec.Y);
+		}
+
+	void LoadRotate(FLOAT _Degree)
+		{
+		FLOAT _SinPhi, _CosPhi;
+		::sincos(DEG2RADF(_Degree), &_SinPhi, &_CosPhi);
+		M[0] = _CosPhi;  M[1] = _SinPhi;
+		M[2] = -_SinPhi; M[3] = _CosPhi;
+		M[4] = 0;		 M[5] = 0;
+		}
+
+	void LoadScale(FLOAT _K)
+		{
+		M[0] = _K; M[1] = 0;
+		M[2] = 0;  M[3] = _K;
+		M[4] = 0; M[5] = 0;
+		}
+
+	void LoadScale(FLOAT _X, FLOAT _Y)
+		{
+		M[0] = _X; M[1] = 0;
+		M[2] = 0;  M[3] = _Y;
+		M[4] = 0; M[5] = 0;
+		}
+
+	void LoadScale(const VECTOR2& _Vec)
+		{
+		M[0] = _Vec.X;	M[1] = 0;
+		M[2] = 0;		M[3] = _Vec.Y;
+		M[4] = 0;		M[5] = 0;
+		}
+
+	void Translate(FLOAT _X, FLOAT _Y)
+		{
+		MATRIX6 tmp;
+		tmp.LoadTranslate(_X, _Y);
+		*this = tmp * *this;
+		}
+
+	void Translate(const VECTOR2& _Vec)
+		{
+		MATRIX6 tmp;
+		tmp.LoadTranslate(_Vec.X, _Vec.Y);
+		*this = tmp * *this;
+		}
+
+	void Rotate(FLOAT _Degree)
+		{
+		MATRIX6 tmp;
+		tmp.LoadRotate(_Degree);
+		*this = tmp * *this;
+		}
+
+	void Scale(FLOAT _K)
+		{
+		MATRIX6 tmp;
+		tmp.LoadScale(_K);
+		*this = tmp * *this;
+		}
+
+	void Scale(FLOAT _X, FLOAT _Y)
+		{
+		MATRIX6 tmp;
+		tmp.LoadScale(_X, _Y);
+		*this = tmp * *this;
+		}
+
+	void Scale(const VECTOR2& _Vec)
+		{
+		MATRIX6 tmp;
+		tmp.LoadScale(_Vec);
+		*this = tmp * *this;
+		}
+
+	union {
+		FLOAT	M[6];
+		struct { VECTOR3 V1, V2; };
+		struct { FLOAT	_11, _12, _13;
+				 FLOAT	_21, _22, _23; };
+	};
+};
+
+
+inline VECTOR2& VECTOR2::operator *= (const MATRIX6& _Mat)
+	{
+	return	*this = VECTOR2(X*_Mat[0] + Y*_Mat[2] + _Mat[4],
+						    X*_Mat[1] + Y*_Mat[3] + _Mat[5]);
+	}
+
+inline VECTOR2 VECTOR2::operator * (const MATRIX6& _Mat) const
+	{
+	return	VECTOR2(X*_Mat[0] + Y*_Mat[2] + _Mat[4],
+					X*_Mat[1] + Y*_Mat[3] + _Mat[5]);
+	}
+
+
+
+
+
+//*************************************************************************
+//							MATRIX9
+//*************************************************************************
+
+
+struct MATRIX9
+{
+	MATRIX9()
+		{
+		}
+
+	MATRIX9(const FLOAT* pf)
+		: _11(pf[0]), _12(pf[1]), _13(pf[2]),
+		  _21(pf[3]), _22(pf[4]), _23(pf[5]),
+		  _31(pf[6]), _32(pf[7]), _33(pf[8])
+		{
+		// memcpy(M, pf, sizeof(MATRIX9));
+		}
+
+	MATRIX9(FLOAT f11, FLOAT f12, FLOAT f13, 
+			FLOAT f21, FLOAT f22, FLOAT f23, 
+			FLOAT f31, FLOAT f32, FLOAT f33)
+		: _11(f11), _12(f12), _13(f13),
+		  _21(f21), _22(f22), _23(f23),
+		  _31(f31), _32(f32), _33(f33)
+		{
+		}
+
+	MATRIX9(FLOAT f11, FLOAT f12,
+			FLOAT f21, FLOAT f22)
+		: _11(f11), _12(f12), _13(0),
+		  _21(f21), _22(f22), _23(0),
+		  _31(0),	_32(0),	  _33(1)
+		{
+		}
+
+	MATRIX9(const VECTOR2& _Vec1, const VECTOR2& _Vec2)
+		: V1(_Vec1), _13(0),
+		  V2(_Vec2), _23(0),
+		  V3(0,0), _33(1)
+		{
+		}
+
+	MATRIX9(const VECTOR2& _Vec1, const VECTOR2& _Vec2, const VECTOR2& _Vec3)
+		: V1(_Vec1), _13(0),
+		  V2(_Vec2), _23(0),
+		  V3(_Vec3), _33(1)
+		{
+		}
+
+	
+	// access grants
+	FLOAT& operator () (unsigned _Row, unsigned _Col)
+		{
+		return M[_Row * sizeof(FLOAT) + _Col];
+		}
+
+	FLOAT operator () (unsigned _Row, unsigned _Col) const
+		{
+		return M[_Row * sizeof(FLOAT) + _Col];
+		}
+
+
+	// casting operators
+	operator FLOAT* ()
+		{
+		return M;
+		}
+
+	operator const FLOAT* () const
+		{
+		return M;
+		}
+
+
+	// assignment operators
+	MATRIX9& operator *= ( const MATRIX9& _Mat )
+		{
+		const MATRIX9 tmp(*this);
+		M[0] = tmp[0] * _Mat[0] + tmp[1] * _Mat[3] + tmp[2] * _Mat[6];
+		M[1] = tmp[0] * _Mat[1] + tmp[1] * _Mat[4] + tmp[2] * _Mat[7];
+		M[2] = tmp[0] * _Mat[2] + tmp[1] * _Mat[5] + tmp[2] * _Mat[8];
+		M[3] = tmp[3] * _Mat[0] + tmp[4] * _Mat[3] + tmp[5] * _Mat[6];
+		M[4] = tmp[3] * _Mat[1] + tmp[4] * _Mat[4] + tmp[5] * _Mat[7];
+		M[5] = tmp[3] * _Mat[2] + tmp[4] * _Mat[5] + tmp[5] * _Mat[8];
+		M[6] = tmp[6] * _Mat[0] + tmp[7] * _Mat[3] + tmp[8] * _Mat[6];
+		M[7] = tmp[6] * _Mat[1] + tmp[7] * _Mat[4] + tmp[8] * _Mat[7];
+		M[8] = tmp[6] * _Mat[2] + tmp[7] * _Mat[5] + tmp[8] * _Mat[8];
+		return *this;
+		}
+
+	MATRIX9& operator += ( const MATRIX9& _Mat )
+		{
+		M[0] += _Mat[0]; M[1] += _Mat[1]; M[2] += _Mat[2];
+		M[3] += _Mat[3]; M[4] += _Mat[4]; M[5] += _Mat[5];
+		M[6] += _Mat[6]; M[7] += _Mat[7]; M[8] += _Mat[8];
+		return *this;
+		}
+
+	MATRIX9& operator -= ( const MATRIX9& _Mat )
+		{
+		M[0] -= _Mat[0]; M[1] -= _Mat[1]; M[2] -= _Mat[2];
+		M[3] -= _Mat[3]; M[4] -= _Mat[4]; M[5] -= _Mat[5];
+		M[6] -= _Mat[6]; M[7] -= _Mat[7]; M[8] -= _Mat[8];
+		return *this;
+		}
+
+	MATRIX9& operator *= ( FLOAT _K )
+		{
+		M[0] *= _K; M[1] *= _K; M[2] *= _K;
+		M[3] *= _K; M[4] *= _K; M[5] *= _K;
+		M[6] *= _K; M[7] *= _K; M[8] *= _K;
+		return *this;
+		}
+
+	MATRIX9& operator /= ( FLOAT _K )
+		{
+		M[0] /= _K; M[1] /= _K; M[2] /= _K;
+		M[3] /= _K; M[4] /= _K; M[5] /= _K;
+		M[6] /= _K; M[7] /= _K; M[8] /= _K;
+		return *this;
+		}
+
+
+	// unary operators
+	MATRIX9 operator + () const
+		{
+		return	*this;
+		}
+
+	MATRIX9 operator - () const
+		{
+		return	MATRIX9(-M[0], -M[1], -M[2],
+						-M[3], -M[4], -M[5],
+						-M[6], -M[7], -M[8]);
+		}
+
+	
+	// binary operators
+	MATRIX9 operator * ( const MATRIX9& _Mat ) const
+		{
+		MATRIX9 ret(*this);
+		ret *= _Mat;
+		return ret;
+		}
+
+	MATRIX9 operator + ( const MATRIX9& _Mat ) const
+		{
+		return	MATRIX9(M[0] + _Mat[0], M[1] + _Mat[1], M[2] + _Mat[2],
+						M[3] + _Mat[3], M[4] + _Mat[4], M[5] + _Mat[5],
+						M[6] + _Mat[6], M[7] + _Mat[7], M[8] + _Mat[8]);
+		}
+
+	MATRIX9 operator - ( const MATRIX9& _Mat ) const
+		{
+		return	MATRIX9(M[0] - _Mat[0], M[1] - _Mat[1], M[2] - _Mat[2],
+						M[3] - _Mat[3], M[4] - _Mat[4], M[5] - _Mat[5],
+						M[6] - _Mat[6], M[7] - _Mat[7], M[8] - _Mat[8]);
+		}
+
+	MATRIX9 operator * ( FLOAT _K ) const
+		{
+		return	MATRIX9(M[0] * _K, M[1] * _K, M[2] * _K,
+						M[3] * _K, M[4] * _K, M[5] * _K,
+						M[6] * _K, M[7] * _K, M[8] * _K);
+		}
+
+	MATRIX9 operator / ( FLOAT _K ) const
+		{
+		return	MATRIX9(M[0] / _K, M[1] / _K, M[2] / _K,
+						M[3] / _K, M[4] / _K, M[5] / _K,
+						M[6] / _K, M[7] / _K, M[8] / _K);
+		}
+
+	// compare
+	bool operator == ( const MATRIX9& _Mat ) const
+		{
+		__asm {
+			xor		eax, eax
+			mov		esi, this
+			mov		edi, _Mat
+			mov		ecx, 9
+			repe	cmpsd
+			sete	al;
+		};
+		//return	M[0] == _Mat[0] && M[1] == _Mat[1] && M[2] == _Mat[2] &&
+		//			M[3] == _Mat[3] && M[4] == _Mat[4] && M[5] == _Mat[5] &&
+		//			M[6] == _Mat[6] && M[7] == _Mat[7] && M[8] == _Mat[8];
+		}
+
+	bool operator != ( const MATRIX9& _Mat ) const
+		{
+		return !(*this == _Mat);
+		//return	M[0] != _Mat[0] || M[1] != _Mat[1] || M[2] != _Mat[2] ||
+		//			M[3] != _Mat[3] || M[4] != _Mat[4] || M[5] != _Mat[5] ||
+		//			M[6] != _Mat[6] || M[7] != _Mat[7] || M[8] != _Mat[8];
+		}
+
+	// math
+	void LoadIdentity()
+		{
+		M[0] = M[4] = M[8] = 1;
+		M[1] = M[2] = M[3] =
+		M[5] = M[6] = M[7] = 0;
+		}
+
+	bool isIdentity() const
+		{
+		return	M[0] == 1 && M[1] == 0 && M[2] == 0 &&
+				M[3] == 0 && M[4] == 1 && M[5] == 0 &&
+				M[6] == 0 && M[7] == 0 && M[8] == 1;
+		}
+
+	void LoadTranspose()
+		{	// local transpose
+		FLOAT tmp;
+		tmp = M[3], M[3] = M[1], M[1] = tmp;
+		tmp = M[6], M[6] = M[2], M[2] = tmp;
+		tmp = M[7], M[7] = M[5], M[5] = tmp;
+		}
+
+	MATRIX9 Transpose()
+		{
+		MATRIX9 ret;
+		ret.LoadTranspose();
+		return ret;
+		}
+
+	FLOAT Determinant() const
+		{
+		return	M[0]*M[4]*M[8] + M[6]*M[1]*M[5] + M[3]*M[7]*M[2] -
+				M[0]*M[7]*M[5] - M[3]*M[1]*M[8] - M[6]*M[4]*M[2];
+		}
+
+	void LoadAdjoint()
+		{	// дополнительная матрица
+		const MATRIX9 tmp(*this);
+		M[0] =  tmp[4] * tmp[8] - tmp[7] * tmp[5];
+		M[1] = -tmp[1] * tmp[8] + tmp[7] * tmp[2];
+		M[2] =  tmp[1] * tmp[5] - tmp[4] * tmp[2];
+		M[3] = -tmp[3] * tmp[8] + tmp[6] * tmp[5];
+		M[4] =  tmp[0] * tmp[8] - tmp[6] * tmp[2];
+		M[5] = -tmp[0] * tmp[5] + tmp[3] * tmp[2];
+		M[6] =  tmp[3] * tmp[7] - tmp[6] * tmp[4];
+		M[7] = -tmp[0] * tmp[7] + tmp[6] * tmp[1];
+		M[8] =  tmp[0] * tmp[4] - tmp[3] * tmp[1];
+		}
+
+	MATRIX9 Adjoint()
+		{
+		MATRIX9 ret;
+		ret.LoadAdjoint();
+		return ret;
+		}
+
+	bool LoadInverse(FLOAT* determinant = 0)
+		{	// инверсия
+		const FLOAT det = Determinant();
+
+		if(determinant)
+			*determinant = det;
+
+		if(det)
+			{
+			LoadAdjoint();
+			operator *=(1.0F / det);
+			return true;
+			}
+		else return false;
+		}
+
+	void LoadMultiplyTranspose(const MATRIX9& _Mat1, const MATRIX9& _Mat2)
+		{
+		*this = _Mat1 * _Mat2;
+		LoadTranspose();
+		}
+
+
+	// transformations
+	void LoadTranslate(FLOAT _X, FLOAT _Y)
+		{
+		M[0] = M[4] = M[8] = 1;
+		M[1] = M[2] = M[3] = M[5] = 0;
+		M[6] = _X, M[7] = _Y;
+		}
+
+	void LoadTranslate(const VECTOR2& _Vec)
+		{
+		M[0] = M[4] = M[8] = 1;
+		M[1] = M[2] = M[3] = M[5] = 0;
+		M[6] = _Vec.X, M[7] = _Vec.Y;
+		}
+
+	void LoadRotate(FLOAT _Degree)
+		{
+		FLOAT _SinPhi, _CosPhi;
+		sincos(DEG2RADF(_Degree), &_SinPhi, &_CosPhi);
+		M[0] = M[4] = _CosPhi, M[1] = _SinPhi, M[3] = -_SinPhi;
+		M[2] = M[5] = M[6] = M[7] = 0;
+		M[8] = 1;
+		}
+
+	void LoadRotate(const VECTOR2& _Vec, FLOAT _Degree)
+		{	// поворот вокруг произвольной точки
+		FLOAT _SinPhi, _CosPhi;
+		sincos(DEG2RADF(_Degree), &_SinPhi, &_CosPhi);
+		M[0] = M[4] = _CosPhi, M[1] = _SinPhi, M[3] = -_SinPhi;
+		M[2] = M[5] = 0;
+		M[6] = -_Vec.X * (_CosPhi-1) + _Vec.Y * _SinPhi;
+		M[7] = -_Vec.Y * (_CosPhi-1) - _Vec.X * _SinPhi ;
+		M[8] = 1;
+		}
+
+	void LoadScale(FLOAT _X, FLOAT _Y)
+		{
+		M[0] = _X, M[4] = _Y; 
+		M[1] = M[2] = M[3] = M[5] = M[6] = M[7] = 0;
+		M[8] = 1;
+		}
+
+	void LoadScale(const VECTOR2& _Vec)
+		{
+		M[0] = _Vec.X, M[4] = _Vec.Y; 
+		M[1] = M[2] = M[3] = M[5] = M[6] = M[7] = 0;
+		M[8] = 1;
+		}
+
+	void Translate(FLOAT _X, FLOAT _Y)
+		{
+			const MATRIX9 tmp(*this);
+			M[6] = _X * tmp[0] + _Y * tmp[3] + tmp[6];
+			M[7] = _X * tmp[1] + _Y * tmp[4] + tmp[7];
+			M[8] = _X * tmp[2] + _Y * tmp[5] + tmp[8];
+		}
+
+
+	void Translate(const VECTOR2& _Vec)
+		{
+			const MATRIX9 tmp(*this);
+			M[6] = _Vec.X * tmp[0] + _Vec.Y * tmp[3] + tmp[6];
+			M[7] = _Vec.X * tmp[1] + _Vec.Y * tmp[4] + tmp[7];
+			M[8] = _Vec.X * tmp[2] + _Vec.Y * tmp[5] + tmp[8];
+		}
+
+	void Rotate(FLOAT _Degree)
+		{
+		FLOAT _SinPhi, _CosPhi;
+		sincos(DEG2RADF(_Degree), &_SinPhi, &_CosPhi);
+		const FLOAT M0 = M[0], M1 = M[1], M2 = M[2],
+					M3 = M[3], M4 = M[4], M5 = M[5];
+
+		M[0] = _CosPhi * M0 + _SinPhi * M3;
+		M[1] = _CosPhi * M1 + _SinPhi * M4;
+		M[2] = _CosPhi * M2 + _SinPhi * M5;
+		M[3] = -_SinPhi * M0 + _CosPhi * M3;
+		M[4] = -_SinPhi * M1 + _CosPhi * M4;
+		M[5] = -_SinPhi * M2 + _CosPhi * M5;
+		}
+
+	void Rotate(const VECTOR2& _Vec, FLOAT _Degree)
+		{	// поворот вокруг произвольной точки
+		FLOAT _SinPhi, _CosPhi;
+		sincos(DEG2RADF(_Degree), &_SinPhi, &_CosPhi);
+		*this = MATRIX9(_CosPhi,	_SinPhi,	0,
+						-_SinPhi,	_CosPhi,	0,
+						-_Vec.X * (_CosPhi-1) + _Vec.Y * _SinPhi,
+						-_Vec.Y * (_CosPhi-1) - _Vec.X * _SinPhi,
+						1) * *this;
+		}
+
+	void Scale(FLOAT _X, FLOAT _Y)
+		{
+		const FLOAT M0 = M[0], M1 = M[1], M2 = M[2],
+					M3 = M[3], M4 = M[4], M5 = M[5];
+		M[0] = _X * M0;
+		M[1] = _X * M1;
+		M[2] = _X * M2;
+		M[3] = _Y * M3;
+		M[4] = _Y * M4;
+		M[5] = _Y * M5;
+		}
+
+
+	void Scale(const VECTOR2& _Vec)
+		{
+		const FLOAT M0 = M[0], M1 = M[1], M2 = M[2],
+					M3 = M[3], M4 = M[4], M5 = M[5];
+		M[0] = _Vec.X * M0;
+		M[1] = _Vec.X * M1;
+		M[2] = _Vec.X * M2;
+		M[3] = _Vec.Y * M3;
+		M[4] = _Vec.Y * M4;
+		M[5] = _Vec.Y * M5;
+		}
+
+	void Mirror(const IMPLICITLINE2& _Line)
+		{	// отражение относительно произвольной прямой (неявная форма)
+		const VECTOR2 _Distance(_Line.GetAnyPoint());
+		__Mirror_Imp(_Distance.X, _Distance.Y,
+			RAD2DEGF(Angle(IMPLICITLINE2(0, -1, 0), _Line)));
+		}
+
+	void Mirror(const PARAMETRICLINE2& _Line)
+		{	// отражение относительно произвольной прямой (параметрическая форма)
+		__Mirror_Imp(_Line.P0.X, _Line.P0.Y, 
+			RAD2DEGF(Angle(PARAMETRICLINE2(0,0,1,0), _Line)));
+		}
+
+
+	union
+	{
+		FLOAT M[9];
+		struct
+		{
+			union {
+				struct { VECTOR2 V1; };
+				struct { FLOAT	_11, _12, _13; };
+			};
+			union {
+				struct { VECTOR2 V2; };
+				struct { FLOAT	_21, _22, _23; };
+			};
+			union {
+				struct { VECTOR2 V3; };
+				struct { FLOAT	_31, _32, _33; };
+			};
+		};
+	};
+
+private:
+	void __Mirror_Imp(FLOAT x, FLOAT y, FLOAT degree)
+		{
+		Translate(x, y);
+		Rotate(degree);
+		Scale(1, -1);	// mirror
+		Rotate(-degree);
+		Translate(-x, -y);
+		}
+};
+
+inline VECTOR2& VECTOR2::operator *= (const MATRIX9& _Mat)
+	{
+	return	*this = VECTOR2(X*_Mat[0] + Y*_Mat[3] + _Mat[6],
+						    X*_Mat[1] + Y*_Mat[4] + _Mat[7]);
+	}
+
+inline VECTOR2 VECTOR2::operator * (const MATRIX9& _Mat) const
+	{
+	return	VECTOR2(X*_Mat[0] + Y*_Mat[3] + _Mat[6],
+					X*_Mat[1] + Y*_Mat[4] + _Mat[7]);
+	}
+
+
+
+
+
+
+
+
+
+//*************************************************************************
+//							MATRIX16
+//*************************************************************************
+
+struct MATRIX16
+{
+	MATRIX16()
+		{
+		}
+
+	//MATRIX16(bool loadidentity, bool dummy)		// avoid ambicuous with next constructor
+	//	: _11(1), _12(0), _13(0), _14(0),
+	//	  _21(0), _22(1), _23(0), _24(0),
+	//	  _31(0), _32(0), _33(1), _34(0),
+	//	  _41(0), _42(0), _43(0), _44(1)
+	//	{
+	//	}
+		
+	MATRIX16( const FLOAT * pf)
+		: _11(pf[0]), _12(pf[1]), _13(pf[2]), _14(pf[3]),
+		  _21(pf[4]), _22(pf[5]), _23(pf[6]), _24(pf[7]),
+		  _31(pf[8]), _32(pf[9]), _33(pf[10]), _34(pf[11]),
+		  _41(pf[12]), _42(pf[13]), _43(pf[14]), _44(pf[15])
+		{
+		// memcpy(M, pf, sizeof(MATRIX16));
+		}
+
+	// column-major matrix (OpenGL)
+	MATRIX16( FLOAT f11, FLOAT f12, FLOAT f13, FLOAT f14,
+			  FLOAT f21, FLOAT f22, FLOAT f23, FLOAT f24,
+			  FLOAT f31, FLOAT f32, FLOAT f33, FLOAT f34,
+			  FLOAT f41, FLOAT f42, FLOAT f43, FLOAT f44 )
+		: _11(f11), _12(f12), _13(f13), _14(f14),
+		  _21(f21), _22(f22), _23(f23), _24(f24),
+		  _31(f31), _32(f32), _33(f33), _34(f34),
+		  _41(f41), _42(f42), _43(f43), _44(f44)
+		{
+		}
+
+	MATRIX16(const VECTOR3& _Vec1, const VECTOR3& _Vec2, const VECTOR3& _Vec3)
+		: V1(_Vec1), _14(0),
+		  V2(_Vec2), _24(0),
+		  V3(_Vec3), _34(0),
+		  _41(0), _42(0), _43(0), _44(1)
+		{
+		}
+
+	MATRIX16(const VECTOR3& _O1, const VECTOR3& _Vec1,
+			 const VECTOR3& _O2, const VECTOR3& _Vec2)
+		// для удобной инициализации "матрицы парных точек" (см. pair-point method)
+		: V1(_O1), _14(1),
+		  V2(_Vec1), _24(1),
+		  V3(_O2), _34(1),
+		  V4(_Vec2), _44(1)
+		{
+		}
+
+	// access grants
+	FLOAT& operator () ( unsigned uiRow, unsigned uiCol )
+		{
+		return M[uiRow * sizeof(FLOAT) + uiCol];
+		}
+
+	FLOAT operator () ( unsigned uiRow, unsigned uiCol ) const
+		{
+		return M[uiRow * sizeof(FLOAT) + uiCol];
+		}
+
+	// casting operators
+	operator FLOAT* ()
+		{
+		return M;
+		}
+
+	operator const FLOAT* () const
+		{
+		return M;
+		}
+
+	// assignment operators
+	MATRIX16& operator *= ( const MATRIX16& _Mat )
+		{
+		const MATRIX16 tmp(*this);
+		M[0]  = tmp.M[0]  * _Mat.M[0] + tmp.M[1]  * _Mat.M[4] + tmp.M[2]  * _Mat.M[8]  + tmp.M[3]  * _Mat.M[12];
+		M[1]  = tmp.M[0]  * _Mat.M[1] + tmp.M[1]  * _Mat.M[5] + tmp.M[2]  * _Mat.M[9]  + tmp.M[3]  * _Mat.M[13];
+		M[2]  = tmp.M[0]  * _Mat.M[2] + tmp.M[1]  * _Mat.M[6] + tmp.M[2]  * _Mat.M[10] + tmp.M[3]  * _Mat.M[14];
+		M[3]  = tmp.M[0]  * _Mat.M[3] + tmp.M[1]  * _Mat.M[7] + tmp.M[2]  * _Mat.M[11] + tmp.M[3]  * _Mat.M[15];
+		M[4]  = tmp.M[4]  * _Mat.M[0] + tmp.M[5]  * _Mat.M[4] + tmp.M[6]  * _Mat.M[8]  + tmp.M[7]  * _Mat.M[12];
+		M[5]  = tmp.M[4]  * _Mat.M[1] + tmp.M[5]  * _Mat.M[5] + tmp.M[6]  * _Mat.M[9]  + tmp.M[7]  * _Mat.M[13];
+		M[6]  = tmp.M[4]  * _Mat.M[2] + tmp.M[5]  * _Mat.M[6] + tmp.M[6]  * _Mat.M[10] + tmp.M[7]  * _Mat.M[14];
+		M[7]  = tmp.M[4]  * _Mat.M[3] + tmp.M[5]  * _Mat.M[7] + tmp.M[6]  * _Mat.M[11] + tmp.M[7]  * _Mat.M[15];
+		M[8]  = tmp.M[8]  * _Mat.M[0] + tmp.M[9]  * _Mat.M[4] + tmp.M[10] * _Mat.M[8]  + tmp.M[11] * _Mat.M[12];
+		M[9]  = tmp.M[8]  * _Mat.M[1] + tmp.M[9]  * _Mat.M[5] + tmp.M[10] * _Mat.M[9]  + tmp.M[11] * _Mat.M[13];
+		M[10] = tmp.M[8]  * _Mat.M[2] + tmp.M[9]  * _Mat.M[6] + tmp.M[10] * _Mat.M[10] + tmp.M[11] * _Mat.M[14];
+		M[11] = tmp.M[8]  * _Mat.M[3] + tmp.M[9]  * _Mat.M[7] + tmp.M[10] * _Mat.M[11] + tmp.M[11] * _Mat.M[15];
+		M[12] = tmp.M[12] * _Mat.M[0] + tmp.M[13] * _Mat.M[4] + tmp.M[14] * _Mat.M[8]  + tmp.M[15] * _Mat.M[12];
+		M[13] = tmp.M[12] * _Mat.M[1] + tmp.M[13] * _Mat.M[5] + tmp.M[14] * _Mat.M[9]  + tmp.M[15] * _Mat.M[13];
+		M[14] = tmp.M[12] * _Mat.M[2] + tmp.M[13] * _Mat.M[6] + tmp.M[14] * _Mat.M[10] + tmp.M[15] * _Mat.M[14];
+		M[15] = tmp.M[12] * _Mat.M[3] + tmp.M[13] * _Mat.M[7] + tmp.M[14] * _Mat.M[11] + tmp.M[15] * _Mat.M[15];
+		return *this;
+		}
+
+	MATRIX16& operator += ( const MATRIX16& _Mat )
+		{
+		M[0]  += _Mat[0];	M[1]  += _Mat[1];	M[2]  += _Mat[2];	M[3]  += _Mat[3];
+		M[4]  += _Mat[4];	M[5]  += _Mat[5];	M[6]  += _Mat[6];	M[7]  += _Mat[7];
+		M[8]  += _Mat[8];	M[9]  += _Mat[9];	M[10] += _Mat[10];	M[11] += _Mat[11];
+		M[12] += _Mat[12];	M[13] += _Mat[13];	M[14] += _Mat[14];	M[15] += _Mat[15];
+		return *this;
+		}
+
+	MATRIX16& operator -= ( const MATRIX16& _Mat )
+		{
+		M[0]  -= _Mat[0];	M[1]  -= _Mat[1];	M[2]  -= _Mat[2];	M[3]  -= _Mat[3];
+		M[4]  -= _Mat[4];	M[5]  -= _Mat[5];	M[6]  -= _Mat[6];	M[7]  -= _Mat[7];
+		M[8]  -= _Mat[8];	M[9]  -= _Mat[9];	M[10] -= _Mat[10];	M[11] -= _Mat[11];
+		M[12] -= _Mat[12];	M[13] -= _Mat[13];	M[14] -= _Mat[14];	M[15] -= _Mat[15];
+		return *this;
+		}
+
+	MATRIX16& operator *= ( FLOAT _K )
+		{
+		M[0]  *= _K;	M[1]  *= _K;	M[2]  *= _K;	M[3]  *= _K;
+		M[4]  *= _K;	M[5]  *= _K;	M[6]  *= _K;	M[7]  *= _K;
+		M[8]  *= _K;	M[9]  *= _K;	M[10] *= _K;	M[11] *= _K;
+		M[12] *= _K;	M[13] *= _K;	M[14] *= _K;	M[15] *= _K;
+		return *this;
+		}
+
+	MATRIX16& operator /= ( FLOAT _K )
+		{
+		_K = 1.0F/_K;
+		M[0]  *= _K;	M[1]  *= _K;	M[2]  *= _K;	M[3]  *= _K;
+		M[4]  *= _K;	M[5]  *= _K;	M[6]  *= _K;	M[7]  *= _K;
+		M[8]  *= _K;	M[9]  *= _K;	M[10] *= _K;	M[11] *= _K;
+		M[12] *= _K;	M[13] *= _K;	M[14] *= _K;	M[15] *= _K;
+		return *this;
+		}
+
+	// unary operators
+	MATRIX16 operator + () const
+		{
+		return *this;
+		}
+
+	MATRIX16 operator - () const
+		{
+		return  MATRIX16(-M[0],  -M[1],  -M[2],  -M[3],
+						 -M[4],  -M[5],  -M[6],	 -M[7],
+						 -M[8],  -M[9],  -M[10], -M[11],
+						 -M[12], -M[13], -M[14], -M[15]);
+		}
+
+	// binary operators
+	MATRIX16 operator * ( const MATRIX16& _Mat ) const
+		{
+		MATRIX16 ret(*this);
+		ret *= _Mat;
+		return ret;
+		}
+
+	MATRIX16 operator + ( const MATRIX16& _Mat ) const
+		{
+		return  MATRIX16(M[0]  + _Mat[0],  M[1]  + _Mat[1],  M[2]  + _Mat[2],  M[3]  + _Mat[3],
+						 M[4]  + _Mat[4],  M[5]  + _Mat[5],  M[6]  + _Mat[6],  M[7]  + _Mat[7],
+						 M[8]  + _Mat[8],  M[9]  + _Mat[9],  M[10] + _Mat[10], M[11] + _Mat[11],
+						 M[12] + _Mat[12], M[13] + _Mat[13], M[14] + _Mat[14], M[15] + _Mat[15] );
+		}
+
+	MATRIX16 operator - ( const MATRIX16& _Mat ) const
+		{
+		return  MATRIX16(M[0]  - _Mat[0],  M[1]  - _Mat[1],  M[2]  - _Mat[2],  M[3]  - _Mat[3],
+						 M[4]  - _Mat[4],  M[5]  - _Mat[5],  M[6]  - _Mat[6],  M[7]  - _Mat[7],
+						 M[8]  - _Mat[8],  M[9]  - _Mat[9],  M[10] - _Mat[10], M[11] - _Mat[11],
+						 M[12] - _Mat[12], M[13] - _Mat[13], M[14] - _Mat[14], M[15] - _Mat[15] );
+		}
+
+	MATRIX16 operator * ( FLOAT _K ) const
+		{
+		return  MATRIX16(M[0]  * _K,  M[1]  * _K,  M[2]  * _K,	M[3]  * _K,
+						 M[4]  * _K,  M[5]  * _K,  M[6]  * _K,	M[7]  * _K,
+						 M[8]  * _K,  M[9]  * _K,  M[10] * _K,	M[11] * _K,
+						 M[12] * _K,  M[13] * _K,  M[14] * _K,	M[15] * _K );
+		}
+
+	MATRIX16 operator / ( FLOAT _K ) const
+		{
+		_K = 1.0F/_K;
+		return  MATRIX16(M[0]  * _K,  M[1]  * _K,  M[2]  * _K,	M[3]  * _K,
+						 M[4]  * _K,  M[5]  * _K,  M[6]  * _K,	M[7]  * _K,
+						 M[8]  * _K,  M[9]  * _K,  M[10] * _K,	M[11] * _K,
+						 M[12] * _K,  M[13] * _K,  M[14] * _K,	M[15] * _K );
+		}
+
+	bool operator == ( const MATRIX16& _Mat ) const
+		{
+		__asm {
+			xor		eax, eax
+			mov		esi, this
+			mov		edi, _Mat
+			mov		ecx, 16
+			repe	cmpsd
+			sete	al;
+		};
+		//return 0 == memcmp(this, &_Mat, sizeof(MATRIX16));
+		//return  M[0]  == _Mat[0]  && M[1]  == _Mat[1]  && M[2]  == _Mat[2]  && M[3]  == _Mat[3]  &&
+		//		M[4]  == _Mat[4]  && M[5]  == _Mat[5]  && M[6]  == _Mat[6]  && M[7]  == _Mat[7]  &&
+		//		M[8]  == _Mat[8]  && M[9]  == _Mat[9]  && M[10] == _Mat[10] && M[11] == _Mat[11] &&
+		//		M[12] == _Mat[12] && M[13] == _Mat[13] && M[14] == _Mat[14] && M[15] == _Mat[15];
+		}
+
+	bool operator != ( const MATRIX16& _Mat ) const
+		{
+		return !(*this == _Mat);
+		}
+
+	// math ops
+	void LoadIdentity()
+		{
+		M[1]  = M[2]  = M[3]  = M[4] =
+		M[6]  = M[7]  = M[8]  = M[9] =
+		M[11] = M[12] = M[13] = M[14] = 0;
+		M[0]  = M[5]  = M[10] = M[15] = 1;
+		}
+
+	bool isIdentity()
+		{
+		return  M[0]  == 1 && M[1]  == 0 && M[2]  == 0 && M[3]  == 0 &&
+				M[4]  == 0 && M[5]  == 1 && M[6]  == 0 && M[7]  == 0 &&
+				M[8]  == 0 && M[9]  == 0 && M[10] == 1 && M[11] == 0 &&
+				M[12] == 0 && M[13] == 0 && M[14] == 0 && M[15] == 1;
+		}
+
+	void LoadTranspose()
+		{
+		FLOAT tmp;
+		tmp = M[1], M[1] = M[4], M[4] = tmp;
+		tmp = M[2], M[2] = M[8], M[8] = tmp;
+		tmp = M[3], M[3] = M[12], M[12] = tmp;
+		tmp = M[6], M[6] = M[9], M[9] = tmp;
+		tmp = M[7], M[7] = M[13], M[13] = tmp;
+		tmp = M[11], M[11] = M[14], M[14] = tmp;
+		}
+
+	FLOAT Determinant() const
+		{
+		return (M[0]*(M[5]*M[10]*M[15] + M[9]*M[14]*M[7] + M[13]*M[6]*M[11] -
+					M[13]*M[10]*M[7] - M[9]*M[6]*M[15] - M[5]*M[14]*M[11]) -
+				M[4]*(M[1]*M[10]*M[15] + M[9]*M[14]*M[3] + M[13]*M[2]*M[11] -
+					M[13]*M[10]*M[3] - M[9]*M[2]*M[15] - M[1]*M[14]*M[11]) +
+				M[8]*(M[1]*M[6]*M[15] + M[5]*M[14]*M[3] + M[13]*M[2]*M[7] -
+					M[13]*M[6]*M[3] - M[5]*M[2]*M[15] - M[1]*M[14]*M[7]) -
+				M[12]*(M[1]*M[6]*M[11] + M[5]*M[10]*M[3] + M[9]*M[2]*M[7] -
+					M[9]*M[6]*M[3] - M[5]*M[2]*M[11] - M[1]*M[10]*M[7]));
+		}
+
+	void LoadAdjoint()
+		{
+		// IMPLEMENTING MATRIX16 ADJOINT
+		// 1. Transpose matrix.
+		// 2. Calculate adjoint minor to element E(ij) (det without i-row and j-col).
+
+		FLOAT tmp[12];				// temp array for pairs
+		MATRIX16 src(*this);		// array of transpose source matrix
+
+		// transpose matrix
+		src.LoadTranspose();
+
+		// calculate pairs for first 8 elements (cofactors)
+		tmp[0] = src[10] * src[15];
+		tmp[1] = src[11] * src[14];
+		tmp[2] = src[9] * src[15];
+		tmp[3] = src[11] * src[13];
+		tmp[4] = src[9] * src[14];
+		tmp[5] = src[10] * src[13];
+		tmp[6] = src[8] * src[15];
+		tmp[7] = src[11] * src[12];
+		tmp[8] = src[8] * src[14];
+		tmp[9] = src[10] * src[12];
+		tmp[10] = src[8] * src[13];
+		tmp[11] = src[9] * src[12];
+		// calculate first 8 elements (cofactors)
+		M[0] = tmp[0]*src[5] + tmp[3]*src[6] + tmp[4]*src[7]  - tmp[1]*src[5] - tmp[2]*src[6] - tmp[5]*src[7];
+		M[1] = tmp[1]*src[4] + tmp[6]*src[6] + tmp[9]*src[7]  - tmp[0]*src[4] - tmp[7]*src[6] - tmp[8]*src[7];
+		M[2] = tmp[2]*src[4] + tmp[7]*src[5] + tmp[10]*src[7] - tmp[3]*src[4] - tmp[6]*src[5] - tmp[11]*src[7];
+		M[3] = tmp[5]*src[4] + tmp[8]*src[5] + tmp[11]*src[6] - tmp[4]*src[4] - tmp[9]*src[5] - tmp[10]*src[6];
+		M[4] = tmp[1]*src[1] + tmp[2]*src[2] + tmp[5]*src[3]  - tmp[0]*src[1] - tmp[3]*src[2] - tmp[4]*src[3];
+		M[5] = tmp[0]*src[0] + tmp[7]*src[2] + tmp[8]*src[3]  - tmp[1]*src[0] - tmp[6]*src[2] - tmp[9]*src[3];
+		M[6] = tmp[3]*src[0] + tmp[6]*src[1] + tmp[11]*src[3] - tmp[2]*src[0] - tmp[7]*src[1] - tmp[10]*src[3];
+		M[7] = tmp[4]*src[0] + tmp[9]*src[1] + tmp[10]*src[2] - tmp[5]*src[0] - tmp[8]*src[1] - tmp[11]*src[2];
+		// calculate pairs for second 8 elements (cofactors)
+		tmp[0] = src[2]*src[7];
+		tmp[1] = src[3]*src[6];
+		tmp[2] = src[1]*src[7];
+		tmp[3] = src[3]*src[5];
+		tmp[4] = src[1]*src[6];
+		tmp[5] = src[2]*src[5];
+		tmp[6] = src[0]*src[7];
+		tmp[7] = src[3]*src[4];
+		tmp[8] = src[0]*src[6];
+		tmp[9] = src[2]*src[4];
+		tmp[10] = src[0]*src[5];
+		tmp[11] = src[1]*src[4];
+		// calculate second 8 elements (cofactors)
+		M[8] = tmp[0]*src[13] + tmp[3]*src[14] + tmp[4]*src[15]	- tmp[1]*src[13] - tmp[2]*src[14] - tmp[5]*src[15];
+		M[9] = tmp[1]*src[12] + tmp[6]*src[14] + tmp[9]*src[15]	- tmp[0]*src[12] - tmp[7]*src[14] - tmp[8]*src[15];
+		M[10] = tmp[2]*src[12] + tmp[7]*src[13] + tmp[10]*src[15]	- tmp[3]*src[12] - tmp[6]*src[13] - tmp[11]*src[15];
+		M[11] = tmp[5]*src[12] + tmp[8]*src[13] + tmp[11]*src[14]	- tmp[4]*src[12] - tmp[9]*src[13] - tmp[10]*src[14];
+		M[12] = tmp[2]*src[10] + tmp[5]*src[11] + tmp[1]*src[9]	- tmp[4]*src[11] - tmp[0]*src[9]  - tmp[3]*src[10];
+		M[13] = tmp[8]*src[11] + tmp[0]*src[8] + tmp[7]*src[10]	- tmp[6]*src[10] - tmp[9]*src[11] - tmp[1]*src[8];
+		M[14] = tmp[6]*src[9] + tmp[11]*src[11] + tmp[3]*src[8]	- tmp[10]*src[11]- tmp[2]*src[8]  - tmp[7]*src[9];
+		M[15] = tmp[10]*src[10] + tmp[4]*src[8] + tmp[9]*src[9]	- tmp[8]*src[9]	 - tmp[11]*src[10]- tmp[5]*src[8];
+		}
+
+	bool LoadInverse(FLOAT* determinant = 0)
+		{
+		const float _0 = M[0], _4 = M[4], _8 = M[8], _12 = M[12];
+
+		LoadAdjoint();
+		const float det = _0*M[0] + _4*M[1] + _8*M[2] + _12*M[3];
+		if(determinant)
+			*determinant = det;
+		const float rcp_det = 1.0F/det;	// need reciprocal rcp_det (for multiple)
+		
+		if(det)
+			{
+			for(int i = 0; i < 16; ++i)
+				M[i] *= rcp_det;
+			return true;
+			}
+		else return false;
+		}
+
+	// modelview ops
+	void LoadTranslation( const VECTOR3& v )
+		{
+		M[0]  = M[5] = M[10] = M[15] = 1;
+		M[1]  = M[2] = M[3] = M[4] = M[6] = M[7] = M[8] = M[9] = M[11] = 0;
+		M[12] = v.X;
+		M[13] = v.Y;
+		M[14] = v.Z;
+		}
+	void LoadTranslation( FLOAT x, FLOAT y, FLOAT z )
+		{
+		M[0]  = M[5] = M[10] = M[15] = 1;
+		M[1]  = M[2] = M[3] = M[4] = M[6] = M[7] = M[8] = M[9] = M[11] = 0;
+		M[12] = x;
+		M[13] = y;
+		M[14] = z;
+		}
+
+	void LoadScale( const VECTOR3& v )
+		{
+		M[0]  = v.X;
+		M[1]  = M[2] = M[3] = M[4] = M[6] = M[7] = M[8] = M[9] = M[11] = M[12] = M[13] = M[14] = 0;
+		M[5]  = v.Y;
+		M[10] = v.Z;
+		M[15] = 1;
+		}
+
+	void LoadScale( FLOAT x, FLOAT y, FLOAT z )
+		{
+		M[0]  = x;
+		M[1]  = M[2] = M[3] = M[4] = M[6] = M[7] = M[8] = M[9] = M[11] = M[12] = M[13] = M[14] = 0;
+		M[5]  = y;
+		M[10] = z;
+		M[15] = 1;
+		}
+
+	void LoadMultiplyTranspose( const MATRIX16& _Mat1, const MATRIX16& _Mat2)
+		{
+		*this = _Mat1 * _Mat2;
+		LoadTranspose();
+		}
+
+	void LoadRotationX( FLOAT degrees )
+		{
+		FLOAT rad = DEG2RADF(degrees);
+		M[0]  = M[15] = 1;
+		M[1]  = M[2] = M[3] = M[4] = M[7] = M[8] = M[11] = M[12] = M[13] = M[14] = 0;
+		M[5]  = ::cos(rad);
+		M[6]  = ::sin(rad);
+		M[9]  = -::sin(rad);
+		M[10] = ::cos(rad);
+		}
+
+	void LoadRotationY( FLOAT degrees )
+		{
+		FLOAT rad = DEG2RADF(degrees);
+		M[0]  = ::cos(rad);
+		M[1]  = M[3] = M[4] = M[6] = M[7] = M[9] = M[11] = M[12] = M[13] = M[14] = 0;
+		M[2]  = -::sin(rad);
+		M[5]  = M[15] = 1;
+		M[8]  = ::sin(rad);
+		M[10] = ::cos(rad);
+		}
+
+	void LoadRotationZ( FLOAT degrees )
+		{
+		FLOAT rad = DEG2RADF(degrees);
+		M[0]  = ::cos(rad);
+		M[1]  = ::sin(rad);
+		M[2]  = M[3] = M[6] = M[7] = M[8] = M[9] = M[11] = M[12] = M[13] = M[14] = 0;
+		M[4]  = -::sin(rad);
+		M[5]  = ::cos(rad);
+		M[10] = M[15] = 1;
+		}
+
+	void LoadRotationAxis( const VECTOR3& axis, FLOAT degrees )
+		{
+	// constructive method
+	// [see Maillot, "Using Quaternions for coding 3D Transformations.", GEMS1, pp.498]
+		VECTOR3 _Vec = axis.GetNormalized();
+		FLOAT rad = DEG2RADF(degrees);
+		FLOAT COS_a = ::cos(rad), SIN_a = ::sin(rad), ONE_MINUS_COS_a = 1.0F - COS_a;
+
+		M[0]  = COS_a + ONE_MINUS_COS_a*_Vec.X*_Vec.X;
+		M[1]  = ONE_MINUS_COS_a*_Vec.X*_Vec.Y + SIN_a*_Vec.Z;
+		M[2]  = ONE_MINUS_COS_a*_Vec.X*_Vec.Z - SIN_a*_Vec.Y;
+		M[4]  = ONE_MINUS_COS_a*_Vec.Y*_Vec.X - SIN_a*_Vec.Z;
+		M[5]  = COS_a + ONE_MINUS_COS_a*_Vec.Y*_Vec.Y;
+		M[6]  = ONE_MINUS_COS_a*_Vec.Y*_Vec.Z + SIN_a*_Vec.X;
+		M[8]  = ONE_MINUS_COS_a*_Vec.Z*_Vec.X + SIN_a*_Vec.Y;
+		M[9]  = ONE_MINUS_COS_a*_Vec.Z*_Vec.Y - SIN_a*_Vec.X;
+		M[10] = COS_a + ONE_MINUS_COS_a*_Vec.Z*_Vec.Z;
+		M[3]  = M[7] = M[11] = M[12] = M[13] = M[14] = 0;
+		M[15] = 1;
+		}
+
+	void LoadTransformation(const VECTOR3& o1, const VECTOR3& V1,
+							const VECTOR3& o2, const VECTOR3& V2)
+		{	// pair-point kinematic method
+		/*
+		По методу пкарных точек строим две ортогональные системы векторов, связанные
+		с исходным и конечным состоянием объекта:
+			
+			1. вычислим нормаль N = V1 x V2, (если V1||V2 то при V1 # z0 полагаем
+				N = V1 x z0, а при V1 || z0 -- V1 x y0) и бинормаль W = V1 x N,
+				получим исходную систему векторов на четырех точках:
+							{ o1, o1 + V1, o1 + N, o1 + W1 }
+
+			2. вычислив коэффициент подобия u = |V2|/|V1| и бинормаль W2 = V2 x N,
+				получим конечную систему на четырех точках:
+							{ o2, o2 + V2, o2 + uN, o2 + W2 }
+			3. итоговая матрица кинематического перехода {o1, V1} -> {o2, V2}
+				явится результатом конкатенации двух матриц ортогональных систем
+				векторов:
+
+									 -1
+						|	o1		1|	|	o2		1|
+						|o1	+ V1	1|	|o2	+ V2	1|
+						|o1	+ N		1|	|o2	+ uN	1|
+						|o1 + V1xN	1|	|o2 + V2xN	1|
+		*/
+		VECTOR3 N;
+		if(abs(V1.GetNormalized() | V2.GetNormalized()) < 1)
+			N = V1 ^ V2;
+		else if(abs(V1.Z) < abs(V1.Magnitude()))
+			N = V1 ^ VECTOR3::OZ;
+		else
+			N = V1 ^ VECTOR3::OY;
+
+		const FLOAT u = ::abs(V2.Magnitude())/::abs(V1.Magnitude());
+
+		MATRIX16 M1(o1, o1 + V1, o1 + N, o1 + (V1 ^ N)),
+				 M2(o2, o2 + V2, o2 + u*N, o2 + (V2 ^ N));
+		M1.LoadInverse();
+		*this = M1 * M2;
+		}
+
+	void LoadTransformation(const VECTOR3& o1, const VECTOR3& V1, const VECTOR3& W1,
+							const VECTOR3& o2, const VECTOR3& V2, const VECTOR3& W2)
+		{	// {o1, V1, W1} -> {o2, V2, W2}
+		MATRIX16 M1(o1, o1 + V1, o1 + W1, o1 + (V1 ^ W1)),
+				 M2(o2, o2 + V2, o2 + W2, o2 + (V2 ^ W2));
+		M1.LoadInverse();
+		*this = M1 * M2;
+		}
+
+	void LoadTransformation(const VECTOR3& o1,
+								const VECTOR3& V1, const VECTOR3& W1, const VECTOR3& U1,
+							const VECTOR3& o2,
+								const VECTOR3& V2, const VECTOR3& W2, const VECTOR3& U2)
+		{	// {o1, V1, W1, U1} -> {o2, V2, W2, U2}
+		MATRIX16 M1(o1, o1 + V1, o1 + W1, o1 + U1),
+				 M2(o2, o2 + V2, o2 + W2, o2 + U2);
+		M1.LoadInverse();
+		*this = M1 * M2;
+		}
+
+	void LoadBoxSideTranslation(const BBOX3& bbox, BBOX3::eBoxSideInfo side,
+								const VECTOR3& delta, FLOAT minsize)
+		{
+		FLOAT k;
+		const VECTOR3 bsize(bbox.Size());
+			  VECTOR3 t1(VECTOR3::O),		// translate
+					  s(VECTOR3::I),		// scale on side-axis
+					  t2(VECTOR3::O);		// back translate
+
+		// calc translate/nuscale/back-translate vectors
+		unsigned d = BBOX3::BSI[side].bnindex;
+		if(side && side < BBOX3::eBoxSideInfo::BSI_RIGHT)
+		{
+			t1[d] = bbox.Max[d], t2[d] = -bbox.Max[d];
+			k = (bsize[d] - delta[d])/bsize[d];
+			s[d] = k > 0 ? k : minsize/bsize[d];
+		}
+		else
+		{
+			t1[d] = bbox.Min[d], t2[d] = -bbox.Min[d];
+			k = (bsize[d] + delta[d])/bsize[d];
+			s[d] = k > 0 ? k : minsize/bsize[d];
+		}
+
+		// build nuscale-side matrix
+		LoadIdentity();
+		Translate(t1);
+		Scale(s);
+		Translate(t2);
+		}
+
+	/*
+	Nondiagonal elements in top-left 3x3-submatrix in 4x4 generig matrix make
+	shift in 3 axis:
+
+						 [1  b  c  0]
+	[X][T] = [x, y, z, 1][d  1  f  0] = [x + dy + gz  bx + y + iz  cx + fy + z  1]
+						 [g  i  1  0]
+						 [0  0  0  1]
+	*/
+	void LoadShift(FLOAT b, FLOAT c, FLOAT d, FLOAT f, FLOAT g, FLOAT i)
+		{
+		M[0] = 1;	M[1] = b;	M[2] = c;	M[3] = 0;
+		M[4] = d;	M[5] = 1;	M[6] = f;	M[7] = 0;
+		M[8] = g;	M[9] = i;	M[10] = 1;	M[11] = 0;
+		M[12] = 0;	M[13] = 0;	M[14] = 0;	M[15] = 1;
+		}
+
+	void LoadShift(const VECTOR2& xshift, const VECTOR2& yshift, const VECTOR2& zshift)
+		{
+		M[0] = 1;			M[1] = yshift.X;	M[2] = zshift.X;	M[3] = 0;
+		M[4] = xshift.X;	M[5] = 1;			M[6] = zshift.Y;	M[7] = 0;
+		M[8] = xshift.Y;	M[9] = yshift.Y;	M[10] = 1;			M[11] = 0;
+		M[12] = 0;			M[13] = 0;			M[14] = 0;			M[15] = 1;
+		}
+
+	void LoadShift(const VECTOR3& xshift, const VECTOR3& yshift, const VECTOR3& zshift)
+		{
+		M[0] = 1;			M[1] = yshift.X;	M[2] = zshift.X;	M[3] = 0;
+		M[4] = xshift.Y;	M[5] = 1;			M[6] = zshift.Y;	M[7] = 0;
+		M[8] = xshift.Z;	M[9] = yshift.Z;	M[10] = 1;			M[11] = 0;
+		M[12] = 0;			M[13] = 0;			M[14] = 0;			M[15] = 1;
+		}
+
+	// compose transform
+	void LoadScale(const VECTOR3& o, const VECTOR3& m)
+		{	// scale by point o
+		M[0]  = m.X;				M[1]  = 0;					M[2]  = 0;					M[3]  = 0;
+		M[4]  = 0;					M[5]  = m.Y;				M[6]  = 0;					M[7]  = 0;
+		M[8]  = 0;					M[9]  = 0;					M[10] = m.Z;				M[11] = 0;
+		M[12] = (1.F - m.X) * o.X;	M[13] = (1.F - m.Y) * o.Y;	M[14] = (1.F - m.Z) * o.Z;	M[15] = 1;
+		}
+
+	void LoadMirror(const VECTOR3& o)
+		{	// mirror by point o
+		M[0]  = -1.F;		M[1]  = 0;			M[2]  = 0;			M[3]  = 0;
+		M[4]  = 0;			M[5]  = -1.F;		M[6]  = 0;			M[7]  = 0;
+		M[8]  = 0;			M[9]  = 0;			M[10] = -1.F;		M[11] = 0;
+		M[12] = 2.F * o.X;	M[13] = 2.F * o.Y;	M[14] = 2.F * o.Z;	M[15] = 1;
+		}
+
+	void LoadMirrorLineX(const VECTOR3& o)
+		{	// mirror by line { o, V }: V||x°
+		M[0]  = 1.F;	M[1]  = 0;			M[2]  = 0;			M[3]  = 0;
+		M[4]  = 0;		M[5]  = -1.F;		M[6]  = 0;			M[7]  = 0;
+		M[8]  = 0;		M[9]  = 0;			M[10] = -1.F;		M[11] = 0;
+		M[12] = 0;		M[13] = 2.F * o.Y;	M[14] = 2.F * o.Z;	M[15] = 1;
+		}
+
+	void LoadMirrorLineY(const VECTOR3& o)
+		{	// mirror by line { o, V }: V||y°
+		M[0]  = -1.F;		M[1]  = 0;		M[2]  = 0;			M[3]  = 0;
+		M[4]  = 0;			M[5]  = 1.F;	M[6]  = 0;			M[7]  = 0;
+		M[8]  = 0;			M[9]  = 0;		M[10] = -1.F;		M[11] = 0;
+		M[12] = 2.F * o.X;	M[13] = 0;		M[14] = 2.F * o.Z;	M[15] = 1;
+		}
+
+	void LoadMirrorLineZ(const VECTOR3& o)
+		{	// mirror by line { o, V }: V||z°
+		M[0]  = -1.F;		M[1]  = 0;			M[2]  = 0;		M[3]  = 0;
+		M[4]  = 0;			M[5]  = -1.F;		M[6]  = 0;		M[7]  = 0;
+		M[8]  = 0;			M[9]  = 0;			M[10] = 1.F;	M[11] = 0;
+		M[12] = 2.F * o.X;	M[13] = 2.F * o.Y;	M[14] = 0;		M[15] = 1;
+		}
+
+	void LoadMirrorLine(const VECTOR3& o, const VECTOR3& V)
+		{	// mirror by line { o, V }: V#y°
+			if (V.X || V.Z)
+			{
+				float	v = ::sqrt(V.X*V.X + V.Z*V.Z),
+						alpha = RAD2DEGF(::asin(V.X / v)),
+						beta = RAD2DEGF(::asin(V.Y / V.Magnitude()));
+
+				LoadTranslation(o);
+				RotationY(alpha);
+				RotationX(-beta);
+				MirrorLineZ(VECTOR3::O);
+				RotationX(beta);
+				RotationY(-alpha);
+				LoadTranslation(-o);
+			}
+			else
+				LoadMirrorLineY(o);
+		}
+
+	void LoadMirrorPlaneXY(const VECTOR3& o)
+		{	// mirror by plane { o, N }: N||z°
+		M[0]  = 1.F;	M[1]  = 0;		M[2]  = 0;			M[3]  = 0;
+		M[4]  = 0;		M[5]  = 1.F;	M[6]  = 0;			M[7]  = 0;
+		M[8]  = 0;		M[9]  = 0;		M[10] = -1.F;		M[11] = 0;
+		M[12] = 0;		M[13] = 0;		M[14] = 2.F * o.Z;	M[15] = 1;
+		}
+
+	void LoadMirrorPlaneZY(const VECTOR3& o)
+		{	// mirror by plane { o, N }: N||x°
+		M[0]  = -1.F;		M[1]  = 0;		M[2]  = 0;		M[3]  = 0;
+		M[4]  = 0;			M[5]  = 1.F;	M[6]  = 0;		M[7]  = 0;
+		M[8]  = 0;			M[9]  = 0;		M[10] = 1.F;	M[11] = 0;
+		M[12] = 2.F * o.X;	M[13] = 0;		M[14] = 0;		M[15] = 1;
+		}
+
+	void LoadMirrorPlaneXZ(const VECTOR3& o)
+		{	// mirror by plane { o, N }: N||y°
+		M[0]  = 1.F;	M[1]  = 0;			M[2]  = 0;		M[3]  = 0;
+		M[4]  = 0;		M[5]  = -1.F;		M[6]  = 0;		M[7]  = 0;
+		M[8]  = 0;		M[9]  = 0;			M[10] = 1.F;	M[11] = 0;
+		M[12] = 0;		M[13] = 2.F * o.Y;	M[14] = 0;		M[15] = 1;
+		}
+
+	void LoadMirrorPlane(const VECTOR3& o, const VECTOR3& N)
+		{	// mirror by plane { o, N }: N#y°
+			if (N.X || N.Z)
+			{
+				float	v = ::sqrt(N.X*N.X + N.Z*N.Z),
+						alpha = RAD2DEGF(::asin(N.X / v)),
+						beta = RAD2DEGF(::asin(N.Y / N.Magnitude()));
+
+				LoadTranslation(o);
+				RotationY(alpha);
+				RotationX(-beta);
+				MirrorPlaneXY(VECTOR3::O);
+				RotationX(beta);
+				RotationY(-alpha);
+				LoadTranslation(-o);
+			}
+			else
+				LoadMirrorPlaneXZ(o);
+		}
+
+
+	// non-local transformation
+	void Translate(const VECTOR3& v)
+		{
+		MATRIX16 tmp;
+		tmp.LoadTranslation(v);
+		*this = tmp * *this;
+		}
+
+	void Translate(FLOAT x, FLOAT y, FLOAT z)
+		{
+		MATRIX16 tmp;
+		tmp.LoadTranslation(x, y, z);
+		*this = tmp * *this;
+		}
+
+	void Scale(const VECTOR3& v)
+		{
+		MATRIX16 tmp;
+		tmp.LoadScale(v);
+		*this = tmp * *this;
+		}
+
+	void Scale(FLOAT x, FLOAT y, FLOAT z)
+		{
+		MATRIX16 tmp;
+		tmp.LoadScale(x, y, z);
+		*this = tmp * *this;
+		}
+
+	void Scale(const VECTOR3& o, const VECTOR3& m)
+		{	// scale by point o
+		MATRIX16 tmp;
+		tmp.LoadScale(o, m);
+		*this = tmp * *this;
+		}
+
+	void Shift(FLOAT b, FLOAT c, FLOAT d, FLOAT f, FLOAT g, FLOAT i)
+		{
+		MATRIX16 tmp;
+		tmp.LoadShift(b, c, d, f, g, i);
+		*this = tmp * *this;
+		}
+
+	void Shift(const VECTOR2& xshift, const VECTOR2& yshift, const VECTOR2& zshift)
+		{
+		MATRIX16 tmp;
+		tmp.LoadShift(xshift, yshift, zshift);
+		*this = tmp * *this;
+		}
+
+	void Shift(const VECTOR3& xshift, const VECTOR3& yshift, const VECTOR3& zshift)
+		{
+		MATRIX16 tmp;
+		tmp.LoadShift(xshift, yshift, zshift);
+		*this = tmp * *this;
+		}
+
+	void RotationX( FLOAT degrees )
+		{
+		MATRIX16 tmp;
+		tmp.LoadRotationX(degrees);
+		*this = tmp * *this;
+		}
+
+	void RotationY( FLOAT degrees )
+		{
+		MATRIX16 tmp;
+		tmp.LoadRotationY(degrees);
+		*this = tmp * *this;
+		}
+
+	void RotationZ( FLOAT degrees )
+		{
+		MATRIX16 tmp;
+		tmp.LoadRotationZ(degrees);
+		*this = tmp * *this;
+		}
+
+	void RotationAxis( const VECTOR3& axis, FLOAT degrees )
+		{
+		MATRIX16 tmp;
+		tmp.LoadRotationAxis(axis, degrees);
+		*this = tmp * *this;
+		}
+
+	void Mirror(const VECTOR3& o)
+		{	// mirror by point o
+		MATRIX16 tmp;
+		tmp.LoadMirror(o);
+		*this = tmp * *this;
+		}
+
+	void MirrorLineX(const VECTOR3& o)
+		{	// mirror by line { o, V }: V||x°
+		MATRIX16 tmp;
+		tmp.LoadMirrorLineX(o);
+		*this = tmp * *this;
+		}
+
+	void MirrorLineY(const VECTOR3& o)
+		{	// mirror by line { o, V }: V||y°
+		MATRIX16 tmp;
+		tmp.LoadMirrorLineY(o);
+		*this = tmp * *this;
+		}
+
+	void MirrorLineZ(const VECTOR3& o)
+		{	// mirror by line { o, V }: V||z°
+		MATRIX16 tmp;
+		tmp.LoadMirrorLineZ(o);
+		*this = tmp * *this;
+		}
+
+	void MirrorLine(const VECTOR3& o, const VECTOR3& V)
+		{	// mirror by line { o, V }: V||z°
+		MATRIX16 tmp;
+		tmp.LoadMirrorLine(o, V);
+		*this = tmp * *this;
+		}
+
+	void MirrorPlaneXY(const VECTOR3& o)
+		{	// mirror by plane { o, N }: N||z°
+		MATRIX16 tmp;
+		tmp.LoadMirrorPlaneXY(o);
+		*this = tmp * *this;
+		}
+
+	void MirrorPlaneZY(const VECTOR3& o)
+		{	// mirror by plane { o, N }: N||x°
+		MATRIX16 tmp;
+		tmp.LoadMirrorPlaneZY(o);
+		*this = tmp * *this;
+		}
+
+	void MirrorPlaneXZ(const VECTOR3& o)
+		{	// mirror by plane { o, N }: N||y°
+		MATRIX16 tmp;
+		tmp.LoadMirrorPlaneXZ(o);
+		*this = tmp * *this;
+		}
+
+	void MirrorPlane(const VECTOR3& o, const VECTOR3& N)
+		{	// mirror by plane { o, N }: N#y°
+		MATRIX16 tmp;
+		tmp.LoadMirrorPlane(o, N);
+		*this = tmp * *this;
+		}
+
+	// setup ortho view
+	void LoadOrthoLH( FLOAT w, FLOAT h, FLOAT zn, FLOAT zf )
+		{
+		M[0] = 2.0F/w;	M[1] = 0;		M[2] = 0;				M[3] = 0;
+		M[4] = 0;		M[5] = 2.0F/h;	M[6] = 0;				M[7] = 0;
+		M[8] = 0;		M[9] = 0;		M[10] = -1.0F/(zn-zf);	M[11] = 0;
+		M[12] = 0;		M[13] = 0;		M[14] = zn/(zn-zf);		M[15] = 1;
+		}
+
+	void LoadOrthoRH( FLOAT w, FLOAT h, FLOAT zn, FLOAT zf )
+		{
+		M[0] = 2.0F/w;	M[1] = 0;		M[2] = 0;				M[3] = 0;
+		M[4] = 0;		M[5] = 2.0F/h;	M[6] = 0;				M[7] = 0;
+		M[8] = 0;		M[9] = 0;		M[10] = 1.0F/(zn-zf);	M[11] = 0;
+		M[12] = 0;		M[13] = 0;		M[14] = zn/(zn-zf);		M[15] = 1;
+		}
+
+	void LoadOrthoOffCenterLH( FLOAT l, FLOAT r, FLOAT b, FLOAT t,
+							   FLOAT zn, FLOAT zf )
+		{
+		M[0] = 2.0F/(r-l);		M[1] = 0;				M[2] = 0;				M[3] = 0;
+		M[4] = 0;				M[5] = 2.0F/(t-b);		M[6] = 0;				M[7] = 0;
+		M[8] = 0;				M[9] = 0;				M[10] = -1.0F/(zn-zf);	M[11] = 0;
+		M[12] = (l+r)/(l-r);	M[13] = (t+b)/(b-t);	M[14] = zn/(zn-zf);		M[15] = 1;
+		}
+
+	void LoadOrthoOffCenterRH( FLOAT l, FLOAT r, FLOAT b, FLOAT t,
+							   FLOAT zn, FLOAT zf )
+		{
+		M[0]  = 2.0F/(r-l);		M[1]  = 0;				M[2]  = 0;				M[3]  = 0;
+		M[4]  = 0;				M[5]  = 2.0F/(t-b);		M[6]  = 0;				M[7]  = 0;
+		M[8]  = 0;				M[9]  = 0;				M[10] = 1.0F/(zn-zf);	M[11] = 0;
+		M[12] = (l+r)/(l-r);	M[13] = (t+b)/(b-t);	M[14] = zn/(zn-zf);		M[15] = 1;
+		}
+
+	// setup perspective view
+	void LoadPerspectiveLH( FLOAT w, FLOAT h, FLOAT zn, FLOAT zf )
+		{
+		M[0]  = 2.0F*zn/w;	M[1]  = 0;			M[2]  = 0;              M[3]  = 0;
+		M[4]  = 0;			M[5]  = 2.0F*zn/h;	M[6]  = 0;              M[7]  = 0;
+		M[8]  = 0;			M[9]  = 0;			M[10] = zf/(zf-zn);     M[11] = 1;
+		M[12] = 0;			M[13] = 0;			M[14] = zn*zf/(zn-zf);  M[15] = 0;
+		}
+
+	void LoadPerspectiveRH( FLOAT w, FLOAT h, FLOAT zn, FLOAT zf )
+		{
+		M[0]  = 2.0F*zn/w;	M[1]  = 0;			M[2]  = 0;              M[3]  = 0;
+		M[4]  = 0;			M[5]  = 2.0F*zn/h;	M[6]  = 0;              M[7]  = 0;
+		M[8]  = 0;			M[9]  = 0;			M[10] = zf/(zn-zf);     M[11] = -1;
+		M[12] = 0;			M[13] = 0;			M[14] = zn*zf/(zn-zf);  M[15] = 0;
+		}
+
+	void LoadPerspectiveOffCenterLH( FLOAT l, FLOAT r, FLOAT b, FLOAT t,
+									 FLOAT zn, FLOAT zf )
+		{
+		M[0]  = 2*zn/(r-l);		M[1]  = 0;				M[2]  = 0;				M[3]  = 0;
+		M[4]  = 0;				M[5]  = 2*zn/(t-b);		M[6]  = 0;				M[7]  = 0;
+		M[8]  = (l+r)/(l-r);	M[9]  = (t+b)/(b-t);	M[10] = zf/(zf-zn);		M[11] = 1;
+		M[12] = 0;				M[13] = 0;				M[14] = zn*zf/(zn-zf);	M[15] = 0;
+		}
+
+	void LoadPerspectiveOffCenterRH( FLOAT l, FLOAT r, FLOAT b, FLOAT t,
+									 FLOAT zn, FLOAT zf )
+		{
+		M[0]  = 2.0F*zn/(r-l);	M[1]  = 0;				M[2]  = 0;				M[3]  = 0;
+		M[4]  = 0;				M[5]  = 2.0F*zn/(t-b);	M[6]  = 0;				M[7]  = 0;
+		M[8]  = (l+r)/(r-l);	M[9]  = (t+b)/(t-b);	M[10] = zf/(zn-zf);		M[11] = -1;
+		M[12] = 0;				M[13] = 0;				M[14] = zn*zf/(zn-zf);	M[15] = 0;
+		}
+
+	void LoadPerspectiveFovLH( FLOAT fovy, FLOAT aspect, FLOAT zn, FLOAT zf )
+		{
+		FLOAT h = ::cos(fovy/2.0F) / ::sin(fovy/2.0F);
+		FLOAT w = h / aspect;
+
+		M[0]  = w;		M[1]  = 0;		M[2]  = 0;				M[3]  = 0;
+		M[4]  = 0;		M[5]  = h;		M[6]  = 0;				M[7]  = 0;
+		M[8]  = 0;		M[9]  = 0;		M[10] = zf/(zf-zn);		M[11] = 1;
+		M[12] = 0;		M[13] = 0;		M[14] = zn*zf/(zn-zf);	M[15] = 0;
+		}
+
+	void LoadPerspectiveFovRH( FLOAT fovy, FLOAT aspect, FLOAT zn, FLOAT zf )
+		{
+		FLOAT h = ::cos(fovy/2.0F) / ::sin(fovy/2.0F);
+		FLOAT w = h / aspect;
+
+		M[0]  = w;		M[1]  = 0;		M[2]  = 0;				M[3]  = 0;
+		M[4]  = 0;		M[5]  = h;		M[6]  = 0;				M[7]  = 0;
+		M[8]  = 0;		M[9]  = 0;		M[10] = zf/(zn-zf);		M[11] = -1;
+		M[12] = 0;		M[13] = 0;		M[14] = zn*zf/(zn-zf);	M[15] = 0;
+		}
+
+	// camera setup
+	void LookAtLH( const VECTOR3& Eye, const VECTOR3& At, const VECTOR3& Up )
+		{
+		VECTOR3 zaxis = (At - Eye).GetNormalized();
+		VECTOR3 xaxis = (Up ^ zaxis).GetNormalized();
+		VECTOR3 yaxis = zaxis ^ xaxis;
+
+		M[0]  = xaxis.X;		M[1]  = yaxis.X;		M[2]  = zaxis.X;		M[3]  = 0;
+		M[4]  = xaxis.Y;		M[5]  = yaxis.Y;		M[6]  = zaxis.Y;		M[7]  = 0;
+		M[8]  = xaxis.Z;		M[9]  = yaxis.Z;		M[10] = zaxis.Z;		M[11] = 0;
+		M[12] = -(xaxis | Eye); M[13] = -(yaxis | Eye); M[14] = -(zaxis | Eye);	M[15] = 1;
+		}
+
+	void LookAtRH( const VECTOR3& Eye, const VECTOR3& At, const VECTOR3& Up )
+		{
+		VECTOR3 zaxis = (Eye - At).GetNormalized();
+		VECTOR3 xaxis = (Up ^ zaxis).GetNormalized();
+		VECTOR3 yaxis = zaxis ^ xaxis;
+
+		M[0]  = xaxis.X;		M[1]  = yaxis.X;		M[2]  = zaxis.X;		M[3]  = 0;
+		M[4]  = xaxis.Y;		M[5]  = yaxis.Y;		M[6]  = zaxis.Y;		M[7]  = 0;
+		M[8]  = xaxis.Z;		M[9]  = yaxis.Z;		M[10] = zaxis.Z;		M[11] = 0;
+		M[12] = -(xaxis | Eye); M[13] = -(yaxis | Eye); M[14] = -(zaxis | Eye);	M[15] = 1;
+		}
+
+
+		
+	friend MATRIX16 operator * ( FLOAT, const MATRIX16& );
+	friend MATRIX16 operator / ( FLOAT, const MATRIX16& );
+
+
+	union
+	{
+		FLOAT M[16];
+		FLOAT MM[4][4];
+		struct
+		{
+			union {
+				struct { VECTOR3 V1; };
+				struct { FLOAT	_11, _12, _13, _14; };
+			};
+			union {
+				struct { VECTOR3 V2; };
+				struct { FLOAT	_21, _22, _23, _24; };
+			};
+			union {
+				struct { VECTOR3 V3; };
+				struct { FLOAT	_31, _32, _33, _34; };
+			};
+			union {
+				struct { VECTOR3 V4; };
+				struct { FLOAT	_41, _42, _43, _44; };
+			};
+		};
+	};
+
+	static const MATRIX16 I;
+};
+
+
+inline MATRIX16 operator * ( FLOAT _K, const MATRIX16& _Mat )
+	{
+	return  MATRIX16(_Mat[0]  * _K,	_Mat[1]  * _K,  _Mat[2]  * _K,  _Mat[3]  * _K,
+					 _Mat[4]  * _K,	_Mat[5]  * _K,  _Mat[6]  * _K,  _Mat[7]  * _K,
+					 _Mat[8]  * _K,	_Mat[9]  * _K,  _Mat[10] * _K,  _Mat[11] * _K,
+					 _Mat[12] * _K,	_Mat[13] * _K,  _Mat[14] * _K,  _Mat[15] * _K );
+	}
+
+inline MATRIX16 operator / ( FLOAT _K, const MATRIX16& _Mat )
+	{
+	return  MATRIX16(_Mat[0]  / _K,	_Mat[1]  / _K,  _Mat[2]  / _K,  _Mat[3]  / _K,
+					 _Mat[4]  / _K,	_Mat[5]  / _K,  _Mat[6]  / _K,  _Mat[7]  / _K,
+					 _Mat[8]  / _K,	_Mat[9]  / _K,  _Mat[10] / _K,  _Mat[11] / _K,
+					 _Mat[12] / _K,	_Mat[13] / _K,  _Mat[14] / _K,  _Mat[15] / _K );
+	}
+
+inline VECTOR3& VECTOR3::operator *= (const MATRIX16& _Mat)
+	{
+	return	*this = VECTOR3(X*_Mat[0] + Y*_Mat[4] + Z*_Mat[8] + _Mat[12],
+							X*_Mat[1] + Y*_Mat[5] + Z*_Mat[9] + _Mat[13],
+							X*_Mat[2] + Y*_Mat[6] + Z*_Mat[10]+ _Mat[14]);
+	}
+
+inline VECTOR3 VECTOR3::operator * (const MATRIX16& _Mat) const
+	{
+	return	VECTOR3(X*_Mat[0] + Y*_Mat[4] + Z*_Mat[8] + _Mat[12],
+					X*_Mat[1] + Y*_Mat[5] + Z*_Mat[9] + _Mat[13],
+					X*_Mat[2] + Y*_Mat[6] + Z*_Mat[10]+ _Mat[14]);
+	}
+
+inline void VECTOR3::Rotate( const MATRIX16& _Mat)
+{
+	*this = VECTOR3(X*_Mat[0] + Y*_Mat[4] + Z*_Mat[8],
+					X*_Mat[1] + Y*_Mat[5] + Z*_Mat[9],
+					X*_Mat[2] + Y*_Mat[6] + Z*_Mat[10]);
+}
+
+inline void VECTOR3::Translate( const MATRIX16& _Mat)
+{
+	X += _Mat[12], Y += _Mat[13], Z += _Mat[14];
+}
+
+inline BBOX3 BBOX3::operator * (const MATRIX16& m) const
+{
+	BBOX3 ret(*this);
+	ret *= m;
+	return ret;
+}
+
+inline BBOX3& BBOX3::operator *=(const MATRIX16& m)
+{
+	Min *= m, Max *= m;
+	return *this;
+}
+
+
+
+
+
+
+//*************************************************************************
+//									PLANE
+//*************************************************************************
+
+struct IMPLICITPLANE
+{
+	IMPLICITPLANE()
+		{
+		}
+
+	IMPLICITPLANE( FLOAT _A, FLOAT _B, FLOAT _C, FLOAT _D )
+		: A(_A), B(_B), C(_C), D(_D)
+		{
+		}
+
+	IMPLICITPLANE( const VECTOR3& _N, FLOAT _D )
+		: N(_N), D(_D)
+		{
+		}
+
+	//IMPLICITPLANE( const VECTOR3& _A, const VECTOR3& _V, const VECTOR3& _W )
+	//	: N(_V ^ _W), D(-( N | _A ))
+	//	{	// from parametric form
+	//	}
+
+	IMPLICITPLANE( const VECTOR3& p1, const VECTOR3& p2, const VECTOR3& p3, bool fromparametric = true)
+		{	// three plane points
+		if(fromparametric)
+			N = p2 ^ p3;
+		else {
+			N = p2 - p1 ^ p3 - p1;
+			N.Normalize();
+		}
+		D = -( N | p1 );
+		}
+
+		// unary operators
+    IMPLICITPLANE operator + () const
+		{
+		return *this;
+		}
+
+    IMPLICITPLANE operator - () const
+		{
+		return IMPLICITPLANE(-A, -B, -C, -D);
+		}
+
+		// compare
+    bool operator == ( const IMPLICITPLANE& _Right ) const
+		{	// TODO: use FLOAT_EQ()?
+		return A == _Right.A && B == _Right.B && C == _Right.C && D == _Right.D;
+		}
+
+    bool operator != ( const IMPLICITPLANE& _Right ) const
+		{
+		return A != _Right.A || B != _Right.B || C != _Right.C || D != _Right.D;
+		}
+
+	bool isZero() const
+		{
+		return A == 0 && B == 0 && C == 0 && D == 0;
+		}
+
+	// math
+	//IMPLICITPLANE operator ^ (const IMPLICITPLANE& _Right) const
+	//	{
+	//	return IMPLICITPLANE(
+	//		B * _Right.D - D * _Right.B,
+	//		D * _Right.A - A * _Right.D,
+	//		A * _Right.B - B * _Right.A);
+	//	}
+
+	FLOAT operator | ( const VECTOR3& _Right ) const
+		{
+		return (N | _Right) + D;
+		}
+
+	VECTOR3 GetAnyPoint() const
+		{
+		return	A ? VECTOR3(-D/A, 0, 0) :
+				B ? VECTOR3(0, -D/B, 0) :
+					VECTOR3(0, 0, -D/C);
+		}
+
+	VECTOR3 GetNearestPoint() const
+		{
+		return -D / (N | N) * N;
+		}
+
+
+	union
+		{
+		struct { FLOAT A, B, C; };
+		struct { VECTOR3 N; };
+		};
+
+	FLOAT D;
+};
+
+
+struct PARAMETRICPLANE
+{
+	PARAMETRICPLANE()
+		{
+		}
+
+	PARAMETRICPLANE( const VECTOR3& _P0, const VECTOR3& _V, const VECTOR3& _W )
+		: P0(_P0), V(_V), W(_W)
+		{
+		}
+
+	PARAMETRICPLANE(const VECTOR3& N)
+		{
+		const VECTOR3 OX(1, 0, 0), OY(0, 1, 0);
+		V = (isParallel(N, OX) ? OY : OX) ^ N;
+		W = N ^ V;
+		P0 = V;
+		}
+
+	// unary operators
+    PARAMETRICPLANE operator + () const
+		{
+		return *this;
+		}
+
+    PARAMETRICPLANE operator - () const
+		{
+		return PARAMETRICPLANE(-P0, -V, -W);
+		}
+
+	// compare
+    bool operator == ( const PARAMETRICPLANE& _Right ) const
+		{
+		return P0 == _Right.P0 && V == _Right.V && W == _Right.W;
+		}
+
+    bool operator != ( const PARAMETRICPLANE& _Right ) const
+		{
+		return P0 != _Right.P0 || V != _Right.V || W != _Right.W;
+		}
+
+	bool isZero() const
+		{
+		return V.isZero() || W.isZero();
+		}
+
+	friend PARAMETRICPLANE PerpPlaneEq(const PARAMETRICLINE3&, const VECTOR3&);
+	friend bool isOnPlane(const PARAMETRICPLANE&, const VECTOR3&);
+	friend PARAMETRICLINE3 Perpendicular(const PARAMETRICPLANE&, const VECTOR3&);
+	friend FLOAT Distance(const PARAMETRICPLANE&, const VECTOR3&);
+
+
+	VECTOR3 P0, V, W;
+};
+
+
+
+
+//*************************************************************************
+//					PLANE UTILITES (IMPLICIT/PARAMETRIC REF)
+//*************************************************************************
+
+// тест ориентации точки q относительно плоскости
+inline
+int OrientationConv(const IMPLICITPLANE& plane, const VECTOR3& q)
+	{
+	const FLOAT Dist = (q - plane.GetAnyPoint()) | plane.N;
+	// float eq version
+	return	-EPSILON < Dist && Dist < EPSILON ? 0 :	// on line
+			Dist > 0 ? 1 :							// at right
+			-1;										// at left
+	//// non-float eq version
+	//return	Dist > 0 ? 1	// at right
+	//			: Dist == 0 ? 0	// on line
+	//			: -1;			// at left
+	}
+
+inline 
+int OrientationConv(const PARAMETRICPLANE& plane, const VECTOR3& q)
+	{
+	const FLOAT Dist = (q - plane.P0) | (plane.V ^ plane.W);
+
+	// float-eq version
+	return	-EPSILON < Dist && Dist < EPSILON ? 0 :	// on line
+			Dist > 0 ? 1 :							// at right
+			-1;										// at left
+	//// non-float eq version
+	//return	Dist > 0 ? 1	// at right
+	//			: Dist == 0 ? 0	// on line
+	//			: -1;			// at left
+	}
+
+
+
+// уравнение плоскости, проходящей через точку q ортогонально прямой line:
+inline IMPLICITPLANE PerpIPlaneEq(const PARAMETRICLINE3& line, const VECTOR3& q)
+	{
+	return	IMPLICITPLANE(line.V, -q | line.V);
+	}
+
+inline PARAMETRICPLANE PerpPPlaneEq(const PARAMETRICLINE3& line, const VECTOR3& q)
+	{
+	const VECTOR3 H = (q - line.P0) ^ line.V;
+	return	PARAMETRICPLANE(q, H ^ line.V, H);
+	}
+
+
+
+// тест принадлежности точки q плоскости plane:
+inline bool isOnPlane(const IMPLICITPLANE& plane, const VECTOR3& q)
+	{
+	return (plane | q) == 0;
+	}
+
+inline bool isOnPlane(const PARAMETRICPLANE& plane, const VECTOR3& q)
+	{
+	return	(q - plane.P0 | plane.V ^ plane.W) == 0;
+	}
+
+
+
+// расстояние от точки до плоскости:
+inline FLOAT Distance(const IMPLICITPLANE& plane, const VECTOR3& q)
+	{
+	return	abs((q - plane.GetAnyPoint()) | plane.N.GetNormalized());
+	}
+
+inline FLOAT Distance(const PARAMETRICPLANE& plane, const VECTOR3& q)
+	{
+	return	(q - plane.P0) |
+			(plane.V.GetNormalized() ^ plane.W.GetNormalized());
+	}
+
+
+
+// уравнение плоскости проходящей через точку q параллельно заданной плоскости:
+inline IMPLICITPLANE ParallelPlaneEq(const IMPLICITPLANE& plane,
+									 const VECTOR3& q)
+	{
+	return	IMPLICITPLANE(plane.N, -q | plane.N);
+	}
+
+inline PARAMETRICPLANE ParallelPlaneEq(const PARAMETRICPLANE& plane,
+									   const VECTOR3& q)
+	{
+	return	PARAMETRICPLANE(q, plane.V, plane.W);
+	}
+
+
+
+// параметрическое уравнение перпендикуляра,
+// опущенного из точки q на плоскость iplane:
+inline PARAMETRICLINE3 Perpendicular(const IMPLICITPLANE& plane,
+									 const VECTOR3& q)
+	{
+	return	PARAMETRICLINE3(q, plane.N);
+	}
+
+inline PARAMETRICLINE3 Perpendicular(const PARAMETRICPLANE& plane,
+									 const VECTOR3& q)
+	{
+	return	PARAMETRICLINE3(q, plane.V ^ plane.W);
+	}
+
+
+
+// уравнение плоскости, проходящей через две параллельные прямые:
+inline IMPLICITPLANE IPlaneEqParLine(const PARAMETRICLINE3& line1,
+									 const PARAMETRICLINE3& line2)
+	{
+	const VECTOR3 NPrl((line2.P0 + line1.P0) ^ line1.V);
+	return	IMPLICITPLANE(NPrl, -line1.P0 | NPrl);
+	}
+
+inline PARAMETRICPLANE PPlaneEqParLine(const PARAMETRICLINE3& line1,
+									   const PARAMETRICLINE3& line2)
+	{
+	return	PARAMETRICPLANE(line1.P0, line2.P0 - line1.P0, line1.V);
+	}
+
+
+
+// уравнение плоскости, проходящей через две пересекающиеся прямые:
+inline IMPLICITPLANE IPlaneEqIntLine(const PARAMETRICLINE3& line1,
+									 const PARAMETRICLINE3& line2)
+	{
+	const VECTOR3 Vperp(line1.V ^ line2.V);
+	return	IMPLICITPLANE(Vperp, line1.P0 | Vperp);
+	}
+
+inline PARAMETRICPLANE PPlaneEqIntLine(const PARAMETRICLINE3& line1,
+									   const PARAMETRICLINE3& line2)
+	{
+	return	PARAMETRICPLANE(line1.P0, line1.V, line2.V);
+	}
+
+
+
+// прямая принадлежит плоскости, если:
+inline bool isCoincide(const IMPLICITPLANE& plane, const PARAMETRICLINE3& line)
+	{
+	return	(line.V | plane.N) == 0 && (plane | line.P0) == 0;
+	}
+
+inline bool isCoincide(const PARAMETRICPLANE& plane, const PARAMETRICLINE3& line)
+	{
+	const VECTOR3 N(plane.V ^ plane.W);
+	return	(line.V | N) == 0 && ((line.P0 - plane.P0) | N) == 0;
+	}
+
+
+
+// прямая параллельна плоскости, если:
+inline bool isParallel(const IMPLICITPLANE& plane, const PARAMETRICLINE3& line)
+	{
+	return	(line.V | plane.N) == 0;
+	}
+
+inline bool isParallel(const PARAMETRICPLANE& plane, const PARAMETRICLINE3& line)
+	{
+	return	(line.V | (plane.V ^ plane.W)) == 0;
+	}
+
+
+
+// расстояние от прямой до параллельной ей плоскости:
+inline FLOAT Distance(const IMPLICITPLANE& plane, const PARAMETRICLINE3& line)
+	{
+	return	abs((line.P0 - plane.GetAnyPoint()) | plane.N.GetNormalized());
+	}
+
+inline FLOAT Distance(const PARAMETRICPLANE& plane, const PARAMETRICLINE3& line)
+	{
+	return	abs((line.P0 - plane.P0) |
+				(plane.V.GetNormalized() ^ plane.W.GetNormalized()));
+	}
+
+
+
+// прямая ортогональна плоскости
+inline bool isOrthogonal(const IMPLICITPLANE& plane, const PARAMETRICLINE3& line)
+	{
+	return (line.V ^ plane.N).isZero();
+	}
+
+inline bool isOrthogonal(const PARAMETRICPLANE& plane, const PARAMETRICLINE3& line)
+	{
+	return (line.V ^ (plane.V ^ plane.W)).isZero();
+	}
+
+
+
+// расчет точки пересечения произвольной прямой с плоскостью
+inline
+bool Intersection(const IMPLICITPLANE& plane, const PARAMETRICLINE3& line,
+				  VECTOR3& q, FLOAT* t = 0)
+	{
+	const FLOAT perp = line.V | plane.N;
+	if(perp)
+		{
+		const FLOAT tt = ((plane.GetAnyPoint() - line.P0 | plane.N) / perp);
+		if(t) *t = tt;
+		q = line.P0 + tt * line.V;
+		return true;
+		}
+	else return false;
+	}
+
+inline
+bool Intersection(const PARAMETRICPLANE& plane, const PARAMETRICLINE3& line,
+				  VECTOR3& q, FLOAT* t = 0)
+	{
+	if(line.V | (plane.V ^ plane.W))
+		{
+		MATRIX16 m(line.V, -plane.V, -plane.W);
+		m.LoadInverse();
+		FLOAT tt = ((plane.P0 - line.P0) * m).X;
+		if(t) *t = tt;
+		q = line.P0 + line.V * tt;
+		return true;
+		}
+	else
+		return false;
+	}
+
+
+
+// плоскости совпадают ?
+inline bool isCoincide(const IMPLICITPLANE& plane1, const IMPLICITPLANE& plane2)
+	{
+	return	(plane1.N ^ plane2.N).isZero() &&
+			((plane2.GetAnyPoint() - plane1.GetAnyPoint()) | plane2.N) == 0;
+	}
+
+inline bool isCoincide(const PARAMETRICPLANE& plane1, const PARAMETRICPLANE& plane2)
+	{
+	return	((plane1.V ^ plane1.W) ^ (plane2.V ^ plane2.W)).isZero() &&
+			((plane2.P0 - plane1.P0) | (plane2.V ^ plane2.W)) == 0;
+	}
+
+
+
+// плоскости параллельны ?
+inline bool isParallel(const IMPLICITPLANE& plane1, const IMPLICITPLANE& plane2)
+	{
+	return	(plane1.N ^ plane2.N).isZero();
+	}
+
+inline bool isParallel(const PARAMETRICPLANE& plane1, const PARAMETRICPLANE& plane2)
+	{
+	return	((plane1.V ^ plane1.W) ^ (plane2.V ^ plane2.W)).isZero();
+	}
+
+
+
+// расстояние между ПАРАЛЛЕЛЬНЫМИ плоскостями
+inline FLOAT Distance(const IMPLICITPLANE& plane1, const IMPLICITPLANE& plane2)
+	{
+	return	abs((plane2.GetAnyPoint() - plane1.GetAnyPoint()) |
+					plane1.N.GetNormalized());
+	}
+
+inline FLOAT Distance(const PARAMETRICPLANE& plane1, const PARAMETRICPLANE& plane2)
+	{
+	return	abs((plane2.P0 - plane1.P0) | (plane1.V.GetNormalized() ^
+					plane1.W.GetNormalized()));
+	}
+
+
+
+// плоскости ортогональны ?
+inline bool isOrthogonal(const IMPLICITPLANE& plane1, const IMPLICITPLANE& plane2)
+	{
+	return	(plane1.N | plane2.N) == 0;
+	}
+
+inline bool isOrthogonal(const PARAMETRICPLANE& plane1, const PARAMETRICPLANE& plane2)
+	{
+	return	((plane1.V ^ plane1.W) | (plane2.V ^ plane2.W)) == 0;
+	}
+
+
+
+// нахождения прямой пересечения двух плоскостей (стр. 68-69)
+inline 
+bool Intersection(const IMPLICITPLANE& plane1, const IMPLICITPLANE& plane2,
+				  PARAMETRICLINE3& line)
+	{
+	const VECTOR3 V = plane1.N ^ plane2.N;
+	if(V.isZero())
+		return false;
+
+	VECTOR2 gamma(-VECTOR2(plane1.D, plane2.D) *
+				  MATRIX9(plane1.N | plane1.N, plane1.N | plane2.N,
+						  plane1.N | plane2.N, plane2.N | plane2.N));
+	VECTOR3	p0( gamma.X * plane1.N.X + gamma.Y * plane2.N.X,
+				gamma.X * plane1.N.Y + gamma.Y * plane2.N.Y,
+				gamma.X * plane1.N.Z + gamma.Y * plane2.N.Z);
+
+	line = PARAMETRICLINE3(p0, V);
+	return true;
+	}
+
+inline
+bool Intersection(const PARAMETRICPLANE& plane1, const PARAMETRICPLANE& plane2,
+				  PARAMETRICLINE3& line)
+	{
+	const VECTOR3 plane1_N(plane1.V ^ plane1.W),
+				  plane2_N(plane2.V ^ plane2.W),
+				  V(plane1_N ^ plane2_N);
+
+	if(V.isZero())
+		return false;
+
+	const FLOAT D1 = plane1.P0 | plane1_N,
+				D2 = plane2.P0 | plane2_N;
+
+	VECTOR2 g(-VECTOR2(D1, D2) *
+				MATRIX9(plane1_N | plane1_N, plane1_N | plane2_N,
+						plane1_N | plane2_N, plane2_N | plane2_N));
+	VECTOR3	p0( g.X * plane1_N.X + g.Y * plane2_N.X,
+				g.X * plane1_N.Y + g.Y * plane2_N.Y,
+				g.X * plane1_N.Z + g.Y * plane2_N.Z);
+
+	line = PARAMETRICLINE3(p0, V);
+	return true;
+	}
+
+
+
+// угол пересечения плоскостей
+inline FLOAT Angle(const IMPLICITPLANE& plane1, const IMPLICITPLANE& plane2)
+	{
+	return ::acos(plane1.N.GetNormalized() | plane2.N.GetNormalized());
+	}
+
+inline FLOAT Angle(const PARAMETRICPLANE& plane1, const PARAMETRICPLANE& plane2)
+	{
+	return ::acos(plane1.V.GetNormalized() ^ plane1.W.GetNormalized() |
+				plane2.V.GetNormalized() ^ plane2.W.GetNormalized());
+	}
+
+
+
+// уравнение плоскости, проходящей через точку q ортогонально двум плоскостям:
+inline 
+IMPLICITPLANE PlaneEqOrtho2Plane(const IMPLICITPLANE& plane1,
+								 const IMPLICITPLANE& plane2, const VECTOR3& q)
+	{
+	const VECTOR3 Nperp(plane1.N ^ plane2.N);
+	return IMPLICITPLANE(Nperp, -q | Nperp);
+	}
+
+inline 
+PARAMETRICPLANE PlaneEqOrtho2Plane(const PARAMETRICPLANE& plane1,
+								   const PARAMETRICPLANE& plane2, const VECTOR3& q)
+	{
+	return PARAMETRICPLANE(q, plane1.V ^ plane1.W, plane2.V ^ plane2.W);
+	}
+
+
+
+// точка пересечения трех плоскостей (стр. 77)
+inline
+bool Intersection(const IMPLICITPLANE& plane1, const IMPLICITPLANE& plane2,
+				  const IMPLICITPLANE& plane3, VECTOR3& q)
+	{
+	MATRIX16 m(plane1.N, plane2.N, plane3.N);
+	if(m.LoadInverse())
+		{
+			q = -VECTOR3(plane1.D, plane2.D, plane3.D) * m;
+			return true;
+		}
+	else
+		return false;
+	}
+
+inline
+bool Intersection(const PARAMETRICPLANE& plane1, const PARAMETRICPLANE& plane2,
+				  const PARAMETRICPLANE& plane3, VECTOR3& q)
+	{
+	const VECTOR3 plane1_N(plane1.V ^ plane1.W),
+				  plane2_N(plane2.V ^ plane2.W),
+				  plane3_N(plane3.V ^ plane3.W);
+
+	MATRIX16 m(plane1_N, plane2_N, plane3_N);
+	if(m.LoadInverse())
+		{
+			q = VECTOR3(plane1.P0 | plane1_N,
+						plane2.P0 | plane2_N,
+						plane3.P0 | plane3_N) * m;
+			return true;
+		}
+	else
+		return false;
+	}
+
+
+
+
+
+
+//*************************************************************************
+//								POLYGONE2
+//*************************************************************************
+
+struct POLYGONE2
+	: public vectorex<VECTOR2>
+		// struct POLYGONE2
+{
+	typedef vectorex<VECTOR2> _Base;
+
+	// ctors
+	POLYGONE2()
+		{
+		}
+
+	explicit POLYGONE2(size_type _Reserve)
+		{ reserve(_Reserve);
+		}
+
+	POLYGONE2(size_type _Count, const VECTOR2& _Val)
+		: _Base(_Count, _Val)
+		{
+		}
+
+	explicit POLYGONE2(const LINESEG2LIST& _SegList)
+		{
+		for(LINESEG2LIST::const_iterator i = _SegList.begin(); i != _SegList.end(); ++i)
+			_Base::push_back(i->Start);
+		}
+
+
+	// math
+	int isConvex() const;
+	bool isSelfIntersect() const;
+
+	FLOAT Area() const
+		{
+		FLOAT S = 0;
+		for(POLYGONE2::const_iterator a = begin(), b = a + 1, c = b + 1; c != end(); ++b, ++c)
+			S += abs(TriangleArea(*a, *b, *c));
+		return S;
+		}
+
+	FLOAT AreaNC() const		// non-convex poly area
+		{
+		FLOAT S = 0;
+		for(POLYGONE2::const_iterator a = begin(), b = a + 1, c = b + 1; c != end(); ++b, ++c)
+			S += TriangleArea(*a, *b, *c);
+		return abs(S);
+		}
+
+	VECTOR2 Center() const
+		{
+		VECTOR2 g(0.0F);
+		for(POLYGONE2::const_iterator a = begin(), b = a + 1, c = b + 1; c != end(); ++b, ++c)
+			g += abs(TriangleArea(*a, *b, *c)) * TriangleCenter(*a, *b, *c)
+			;
+		return g /= Area();
+		}
+
+	VECTOR2 CenterNC() const	// non-convex poly center
+		{
+		VECTOR2 g(0.0F);
+		FLOAT triangle_area, sum = 0;
+		for(POLYGONE2::const_iterator a = begin(), b = a + 1, c = b + 1; c != end(); ++b, ++c){
+			triangle_area = TriangleArea(*a, *b, *c);
+			g += (*a + *b + *c) * triangle_area;
+			sum += 3 * triangle_area;
+		}
+		return g /= sum;
+		}
+
+	// transform
+	POLYGONE2& operator *= (const MATRIX9& m)
+		{
+		for(iterator i = begin(); i != end(); ++i)
+			(*i) *= m;
+		return *this;
+		}
+
+	POLYGONE2  operator * (const MATRIX9& m) const
+		{
+		POLYGONE2 ret(*this);
+		ret *= m;
+		return ret;
+		}
+
+
+
+	friend int isIntersect( const POLYGONE2&, const IMPLICITLINE2& );
+	friend int isIntersect( const POLYGONE2&, const PARAMETRICLINE2& );
+	friend bool isIntersect( const POLYGONE2& poly1, const POLYGONE2& poly2,
+					bool strong = false );		// ???
+	friend bool isIntersectGab( const POLYGONE2& poly1, const POLYGONE2& poly2,
+					bool strong = false );		// ???
+	friend int OrientationConv( const POLYGONE2&, const VECTOR2&);
+	friend bool OrientationGab( const POLYGONE2& poly, const VECTOR2& point,
+					bool strong = false );
+	friend int OrientationRad( const POLYGONE2& poly, const VECTOR2& point);
+	friend int OrientationRay( const POLYGONE2& poly, const VECTOR2& point);
+
+};
+
+
+
+/*
+===========================================================================
+	Routine:
+		int POLYGONE2::isConvex()
+
+	Description:
+		Тест выпуклости полигона
+
+	Parameters:
+
+	Return Values:
+		1	- выпуклый
+		0	- не выпуклый
+		-1	- имеет хотя бы одну вершину с развернутым углом (==180°)
+
+	Remarks:
+		isConv2(P) = {sign(nf2(Pi-1, Pi, Pi+1)) = const }
+
+	При обходе замкнутого полигона в ПРОИЗВОЛЬНОМ направлении каждая вершина Pi+1
+	расположена относительно ребра Pi-1,Pi одинаково для всех значений i:
+		- слева при положительном направлении обхода
+		- справа - при отрицательном
+	Благодаря свойству сепарабельности при обходе НЕВЫПУКЛОГО полигона когда-нибудь
+	обязательно возникнет инверсия знака числа s = nf2(Pi-1, Pi, Pi+1) = 0.
+		
+===========================================================================
+*/
+inline 
+int POLYGONE2::isConvex() const
+	{
+		if(size() > 3)
+		{
+		const int c = OrientationConv((*this)[0], (*this)[1], (*this)[2]);
+		int s;
+		for(const_iterator _AItr = begin() + 1, _BItr = begin() + 2, _CItr = begin() + 3;
+						   _BItr != end(); 
+						   ++_AItr, ++_BItr, ++_CItr != end() ? _CItr : _CItr = begin())
+			{
+			s = c * OrientationConv(*_AItr, *_BItr, *_CItr);
+			if(s == 0) return -1;
+			else if(s < 0) return 0;
+			}
+		}
+
+	return 1;
+	}
+
+/*
+===========================================================================
+	Routine:
+		bool POLYGONE2::isSelfIntersect()
+
+	Description:
+		Тест выпуклости полигона
+
+	Parameters:
+
+	Return Values:
+		1	- есть самопересечение
+		0	- отсутствие самопересечения
+
+	Remarks:
+		Полигон является самопересекающейся замкнутой ломанной линией
+		если у него существует хотя бы одна пара пересекающихся отрезков.
+		Два отрезка пересекаются друг с другом, если концы одного находятся по разные
+		стороны от прямой другого и наоборот.
+		Интервалы изменения индексов подобраны так, чтобы были протестированы
+		ВСЕ пары НЕ СМЕЖНЫХ ребер полигона.
+===========================================================================
+*/
+inline 
+bool POLYGONE2::isSelfIntersect() const
+{
+	const size_t sz = size();
+	if(sz > 3)
+	{
+		for(size_t i1 = 0, i2 = 1; i1 < sz; ++i1, i2 = (i1 + 1) % sz)
+			for(size_t j = 0, j1 = (i1 + 2) % sz, j2 = (j1 + 1) % sz;
+					   j < sz - 3;
+					   ++j, j1 = (i1 + j + 2) % sz, j2 = (j1 + 1) % sz)
+				if( OrientationConv((*this)[i1], (*this)[i2], (*this)[j1]) *
+					OrientationConv((*this)[i1], (*this)[i2], (*this)[j2]) < 0 &&
+					OrientationConv((*this)[j1], (*this)[j2], (*this)[i1]) *
+					OrientationConv((*this)[j1], (*this)[j2], (*this)[i2]) < 0 )
+					return true;
+	}
+
+	return false;
+}
+
+
+
+
+
+/*
+===========================================================================
+	Routine:
+		int isIntersect( const POLYGONE2& P, const IMPLICITLINE2& line )
+		int isIntersect( const POLYGONE2& P, const PARAMETRICLINE2& line )
+		int isIntersect( const POLYGONE2& A, const POLYGONE2& B, bool strong )
+
+	Description:
+		Тест пересечения прямой линии f(p) = 0, полигона с полигоном P,
+		имеющим произвольное направление обхода вершин.
+
+	Parameters:
+		P		- input poly2
+		line	- input (implicit/parametric) line
+
+	Return Values:
+		1	- пересечение прямой(полигона) с полигоном
+		0	- касание прямой(полигона) полигона
+		-1	- отсутствие пересечения
+
+	Remarks:
+		Прямая пересекает полигон, если существует хотя бы одна пара вершин,
+		лежащих от нее по разные стороны.
+
+		Здесь необходимо сравнивать положение отностительно прямой не только смежных
+		вершин полигона, а ВСЕХ различных пар вершин т.к. прямая может, пересекая
+		полигон только в вершинах, не пересечь ни одного ребра внутри (случай касания).
+		Свойство сепарабельности позволяет по разным знакам чисел f(Pm) и f(Pn)
+		обнаружить вершины Pm и Pn лежащие по разные стороны от пересекающей полигон прямой.
+		Если же не найдется ни одной пары разносторонних вершин, то прямая и полигон
+		не пересекаются.
+===========================================================================
+*/
+inline
+int isIntersect( const POLYGONE2& poly, const IMPLICITLINE2& line )
+	{
+	signed e = 0;
+	for(size_t i = 0, l = 0, r = 0, size = poly.size(); i < size; ++i)
+		{
+		switch(OrientationConv(line, poly[i]))
+			{
+			case -1:	l = 1; break;	// at left
+			case 1:		r = 1; break;	// at right
+			case 0:		e = 1; break;	// on line
+			}
+
+		if(l * r)
+			return 1;
+		}
+
+	return e - 1;
+	}
+
+inline
+int isIntersect( const POLYGONE2& poly, const PARAMETRICLINE2& line )
+	{
+	signed e = 0;
+	for(size_t i = 0, l = 0, r = 0, size = poly.size(); i < size; ++i)
+		{
+		switch(OrientationConv(line, poly[i]))
+			{
+			case -1:	l = 1; break;	// at left
+			case 1:		r = 1; break;	// at right
+			case 0:		e = 1; break;	// on line
+			}
+
+		if(l * r)
+			return 1;
+		}
+
+	return e - 1;
+	}
+
+inline
+bool isIntersect( const POLYGONE2& poly1, const POLYGONE2& poly2, bool strong )
+	{
+	for(POLYGONE2::const_iterator i1 = poly1.begin(), i2 = i1 + 1;
+								  i1 != poly1.end();
+								  ++i1, ++i2 != poly1.end() ? i2 : i2 = poly1.begin())
+		for(POLYGONE2::const_iterator j1 = poly2.begin(), j2 = j1 + 1;
+								  j1 != poly2.end();
+								  ++j1, ++j2 != poly2.end() ? j2 : j2 = poly2.begin())
+			if(CrossParm(*i1, *i2, *j1, *j2, 0, 0, 0, strong) == 1)
+				return true;
+
+	return false;
+	}
+
+
+inline
+bool isIntersectGab(const POLYGONE2& poly1, const POLYGONE2& poly2, bool strong)
+	{	// fast gabarite test
+	const BBOX2 bbox1(&poly1[0], poly1.size()), bbox2(&poly2[0], poly2.size());
+	return isIntersect(bbox1, bbox2, strong);
+	}
+
+
+
+/*
+===========================================================================
+	Routine:
+		int OrientationConv(const POLYGONE2& P, const VECTOR2& point)
+
+	Description:
+		Тест ориентации точки относительно ВЫПУКЛОГО полигона (выпуклый тест)
+
+	Parameters:
+		P		- input poly2
+		point	- input point
+
+	Return Values:
+		1	- точка ВНЕ полигона
+		-1	- точка ВНУТРИ полигона
+		0	- точка НА ГРАНИЦЕ полигона (в вершинах или на ребре)
+		
+	Remarks:
+		Внутреннее положение точки q относительно полигона определяется по одинаковым
+		знакам чисел Fi = nf2(Pi,Pi+1,q) для всех ребер Pi,Pi+1 полигона.
+		Любую ВНЕШНЮЮ точку тест обнаруживает по разным знакам чисел Fi и Fj,
+		соответствующих ребрам Pi,Pi+1 и Pj,Pj+1. Здесь нужно сравнивать положение точки q
+		не только для всех СМЕЖНЫХ ребер, а для всех различных пар ребер.
+		Все точки, не идентифицированные как внутренние или внешние считаются
+		ГРАНИЧНЫМИ.		
+===========================================================================
+*/
+inline 
+int OrientationConv(const POLYGONE2& poly, const VECTOR2& point)
+{
+	signed l = 0, r = 0, e = 0;
+	for(POLYGONE2::const_iterator i1 = poly.begin(), i2 = i1 + 1;
+								  i1 != poly.end();
+								  ++i1, ++i2 != poly.end() ? i2: i2 = poly.begin())
+	{
+		switch(OrientationConv(*i1, *i2, point))
+		{
+		case -1:	l = 1; break;	// at left
+		case 1:		r = 1; break;	// at right
+		case 0:		e = 1; break;	// on line
+		}
+
+		if(l * r)
+			return 1;
+	}
+	return e - 1;
+}
+
+
+
+
+/*
+===========================================================================
+	Routine:
+		bool OrientationGab( const POLYGONE2& P, const VECTOR2& point, bool strong )
+
+	Description:
+		Тест ориентации точки относительно ПРОИЗВОЛЬНОГО полигона (габаритный тест)
+
+	Parameters:
+		P		- input poly2
+		point	- input point
+
+	Return Values:
+		0	- точка ГАРАНТИРОВАННО ВНЕ полигона
+		1	- точка находится ВНУТРИ ГАБАРИТНОГО ПРЯМОУГОЛЬНИКА но
+			  не может быть однозначно идентифицирована как внутренняя
+			  (требуется дополнительный тест; см. conv_test, rad_test)
+		
+	Remarks:
+		Благодая своей простате габаритный тест применяется для БЫСТРОГО
+		обнаружения заведомо непересекающихся геометрических объектов.
+
+		strong - точка на границе полигона НЕ СЧИТАЕТСЯ внутренней
+===========================================================================
+*/
+inline 
+bool OrientationGab( const POLYGONE2& poly, const VECTOR2& point, bool strong )
+{
+	const BBOX2 bbox(&poly[0], poly.size());
+	return ::isInside(point, bbox, strong);
+}
+
+// strong false variant (for orientation-fun-pointer-array)
+inline 
+int OrientationGabS( const POLYGONE2& poly, const VECTOR2& point )
+{
+	const BBOX2 bbox(&poly[0], poly.size());
+	return ::isInside(point, bbox, false);
+}
+
+
+/*
+===========================================================================
+	Routine:
+		int OrientationRad( const POLYGONE2& poly, const VECTOR2& point)
+
+	Description:
+		Тест ориентации точки q относительно ПРОИЗВОЛЬНОГО полигона (угловой тест)
+
+	Parameters:
+		poly	- input poly2
+		point	- input point
+
+	Return Values:
+		1	- точка ВНЕ полигона
+		-1	- точка ВНУТРИ полигона
+		0	- точка НА ГРАНИЦЕ полигона (в вершинах или на ребре)
+		
+	Remarks:
+	1.	Основан на вычислении и анализе алгебраической суммы углов
+		между смежными векторами Vi = Pi - q, соединяющими точку q с
+		вершинами Pi при обходе ПРОИЗВОЛЬНОГО полигона Р по замкнутому
+		контуру	в ПРОИЗВОЛЬНОМ направлении.
+
+		Тест основан на следующем опыте: наблюдатель, осматривающий
+		вершины полигона из ВНУТРЕННЕЙ точки совершает вокруг себя ПОЛНЫЙ оборот.
+		Для всех ненулевых Vi:
+
+			| n				|	|
+			| --			|	|
+			| \				|	| 0 < п		-> вне
+			| / ang(Vi,Vi+1)| = |
+			| --			|	| 2п > п	-> внутри
+			|				|	|
+
+		В связи с неизбежными погрешностями, возникающими при суммировании углов,
+		вычисляющимых с помощью трансцендентных функций предлагается взять пороговое
+		значение равное п (число-пи).
+
+	2.	Если при расчете векторов будет получен нулевой вектор |V| = 0,
+		то тестируемая точка совпадает с вершиной Pi.
+		Если при расчете углов гi будет получен развернутый угол с модулем
+		|гi| = п, то тестируемая точка лежит на ребре Pi,Pi+1
+===========================================================================
+*/
+inline
+int OrientationRad( const POLYGONE2& poly, const VECTOR2& point)
+{
+	FLOAT s = 0, theta = 0;
+	VECTOR2 V, W(poly[0] - point);
+
+	if(W.MagnitudeSq() == 0)			// тестируемая точка совпадает с вершиной W
+		return 0;
+
+	for(size_t i = 1, size = poly.size(); i < size; ++i)
+	{
+		V = poly[i] - point;
+		if(V.MagnitudeSq() == 0)		// тестируемая точка совпадает с вершиной V
+			return 0;
+
+		theta = Angle(W, V);			// get angle between vectors W, V
+
+		if( abs(theta) == FLT_PI )		// точка лежит НА РЕБРЕ WV
+			return 0;
+
+		W = V;
+		s += theta;
+	}
+
+	return SIGN(FLT_PI - abs(s));
+}
+
+
+
+/*
+===========================================================================
+	Routine:
+		int OrientationRay( const POLYGONE2& P, const VECTOR2& point)
+
+	Description:
+		Тест ориентации точки q относительно ПРОИЗВОЛЬНОГО полигона
+		(лучевой тест)
+
+	Parameters:
+		P		- input poly2
+		point	- input point
+
+	Return Values:
+		1	- точка ВНЕ полигона
+		-1	- точка ВНУТРИ полигона
+		0	- точка НА ГРАНИЦЕ полигона (в вершинах или на ребре)
+		
+	Remarks:
+		Лучевой тест ориентации точки относительно ПРОИЗВОЛЬНОГО полигона
+		заключается в выпускании из этой точки луча в произвольном направлении
+		и подсчете числа его пересечений с ребрами полигона.
+		Параметры пересечения луча с отрезками p1 + (pi+1 - pi)q, 0 <= q <= 1,
+		непараллельными вектору V находятся по формуле:
+
+							 [	  V		 ]-1
+			[t, q] = (pi - q)[			 ]
+							 [ pi - pi+1 ]
+
+		Анализ параметрических пар [t, q] дает следующие критерии ориентации
+		точки относительно полигона:
+
+			-	точка является ВНУТРЕННЕЙ если число пар { ti > 0, 0 < qi < 1 }
+				нечетно
+			-	точка является ВНЕШНЕЙ если число таких пар четно
+			-	точка лежит на границе полигона если { ti = 0, 0 <= qi <= 1 }
+
+
+		ВНИМАНИЕ: число пересечений неопределено если луч прошел точно через
+		вершину полигона -- необходимо повторить тест заново с другим
+		направлением луча!
+===========================================================================
+*/
+inline
+int OrientationRay( const POLYGONE2& poly, const VECTOR2& point)
+{
+	int f = 1;
+
+reset:
+	VECTOR2 V = V2e_rand();
+	for(POLYGONE2::const_iterator i1 = poly.begin(), i2 = i1 + 1;
+								  i1 != poly.end();
+								  ++i1, ++i2 != poly.end() ? i2 : i2 = poly.begin())
+	{
+		MATRIX9 M(V, *i1 - *i2);
+
+		if(M.LoadInverse())
+		{
+		VECTOR2 tq((*i1 - point) * M);
+
+		if(tq.X > 0 && tq.Y > 0 && tq.Y < 1)
+			f = -f;
+
+		if(tq.X == 0 && tq.Y >= 0 && tq.Y <= 1)		// point on poly`s edge
+			return 0;
+
+		if(tq.Y == 0 || tq.Y == 1)					// ray intersect poly`s vertex: need another random ray
+			goto reset;
+		}
+	}
+
+	return f;
+}
+
+
+
+
+
+/*
+===========================================================================
+	Routine:
+		ClipCross(VECTOR2& A, VECTOR2& B, const POLYGONE2& P)
+
+	Description:
+		ВНЕШНЕЕ отсечение отрезка ав ВЫПУКЛЫМ полигоном P, основан на пересечении
+		прямой {а, в}, содержащий отрезок, с отрезками Pi-Pi+1 --
+		сторонами полигона.
+
+	Parameters:
+		A,B		- input line
+		P		- input polygone2
+
+	Return Values:
+		Алгоритм возвращает через аргумент ав НЕОТСЕЧЕННЫЙ ФРАГМЕНТ ОТРЕЗКА
+		ВНУТРИ ПОЛИГОНА, а сама функция возвращает признак видимости отрезка
+		ав в "окне" полигона Р.
+
+			0	- если отрезок целиком находится ВНЕ полигона и целиком им
+				  отсекается.
+		    1	- если отрезок целиком или частично расположенвнутри полигона.
+
+	Remarks:
+	1.	Работа алгоритма начинается с инициализации счетчика перечислений
+		и вычислении направляющего вектора V = B - A. Далее выполняется обход 
+		ребер полигона и расчет пересечения с ним не самого торезка ав,
+		а несущей его прямой A + (B - A)t. Если возвращаемое ей значение не
+		отрицательно и прямая пересекает ребро (это обнаруживается по условию 
+		0 <= t <= 1) то счетчик пересечений инкрементируется, а а параметр t
+		сохраняется в переменной. По достижению ДВУХ пересечений дальнейший обход
+		ВЫПУКЛОГО полигона Р прекращается.
+
+	2.	ATTENTION: внешние концевые точки стягиваются на границу полигона!!!
+===========================================================================
+*/
+bool ClipCross(const POLYGONE2& poly, VECTOR2& A, VECTOR2& B);
+
+
+
+
+/*
+===========================================================================
+	Routine:
+		ClipConv(	const POLYGONE2* P, VECTOR2* A, VECTOR2* B,
+					VECTOR2* C = 0, VECTOR2* D = 0, bool internal = false )
+
+	Description:
+		ВНЕШНЕЕ отсечение отрезка аB ВЫПУКЛЫМ полигоном P.
+		Отсечение отрезка полигоном на основе ВЫПУКЛОГО теста ориентации точки.
+
+	Parameters:
+		A,B		- input line
+		P		- input polygone2
+
+	Return Values:
+		Алгоритм возвращает через аргумент аB (и cd - если отсечение внутреннее!)
+		НЕОТСЕЧЕННЫЙ ФРАГМЕНТ ОТРЕЗКА ВНУТРИ ПОЛИГОНА, а сама функция возвращает
+		признак видимости отрезка ав в "окне" полигона Р.
+
+			0	- если отрезок целиком находится ВНЕ полигона и целиком им
+				  отсекается.
+		    1/2	- если отрезок целиком или частично расположенвнутри полигона.
+				  (+ сколько отрезков получилось (1 или 2))
+
+	Remarks:
+	1.	При внутреннем отсечеини отрезка выпуклым полигоном отбор неотсеченных фрагментов
+		выполняется по условию их внешней ориентации (OrientationConv(p, P) == 1).
+		Число таких фрагментов может быть от нуля (весь отрезок лежит внутри
+		полигона) до двух (средняя часть отрезка экранируется полигоном).
+	2.	При отсечении отрезка НЕВЫПУКЛЫМ полигоном необходимо вместо выплого теста
+		ориентации точки использовать угловые или лучевые тесты для определения
+		ориентации средних точек фрагментов относительно произвольного полигона.
+		При внешнем отсечении выбираются фрагменты, средние точки которых лежат ВНУТРИ
+		полигона, а при ВНУТРЕННЕМ -- фрагменты со средними точками ВНЕ полигона.
+===========================================================================
+*/
+int ClipConv(const POLYGONE2* poly, VECTOR2* A, VECTOR2* B,
+			 VECTOR2* C = 0, VECTOR2* D = 0, bool internal = false );
+
+
+//
+// safety `operator ==`
+//
+inline
+bool SafeEqual(const POLYGONE2& poly1, const POLYGONE2& poly2)
+	{
+	if(poly1.size() == poly2.size())
+		{
+		POLYGONE2::const_iterator _ItrP2;
+		for(_ItrP2 = poly2.begin(); _ItrP2 != poly2.end(); ++_ItrP2)
+			if(*_ItrP2 == poly1[0])
+				break;
+
+		if(_ItrP2 != poly2.end())
+			{
+			for(POLYGONE2::const_iterator _ItrP1 = poly1.begin();
+				_ItrP1 != poly1.end();
+				++_ItrP1, ++_ItrP2 != poly2.end() ? _ItrP2 : _ItrP2 = poly2.begin())
+					if(*_ItrP1 != *_ItrP2)
+						return false;
+			return true;
+			}
+		}
+
+	return false;
+	}
+
+
+/*
+===========================================================================
+	Routine:
+		void Clip(const POLYGONE2& A, const POLYGONE2& B,
+		  LINESEG2LIST& seglist, const bool internal)
+
+	Description:
+		Отсечение ВЫПУКЛОГО полигона А полигоном В (клиппер) и сохранение
+		полученных отрезков в списке "seglist".
+		
+
+	Parameters:
+		A		- input poly 1
+		B		- input poly 2
+		seglist	- line segment list (current - based on STL vector)
+		internal- is internal clipping?
+
+	Return Values:
+		В аргумент "seglist" записываются полученные в ходе последовательного
+		отсечения отрезки.
+
+	Remarks:
+	1.	ATTENTION: предполагаются ВЫПУКЛЫЕ полигоны!
+===========================================================================
+*/
+inline
+void Clip(const POLYGONE2& clipped, const POLYGONE2& clipper,
+		  LINESEG2LIST& seglist, bool internal = false)
+	{
+	VECTOR2 ra, rb, rc, rd;
+
+	for(POLYGONE2::const_iterator B = clipped.begin(),
+								  I1 = clipped.begin(),
+								  I2 = clipped.begin() + 1;
+		I1 != clipped.end();
+		++I1, ++I2 == clipped.end() ? I2 = B : I2)
+		{
+		ra = *I1, rb = *I2;
+		switch(ClipConv(&clipper, &ra, &rb, &rc, &rd, internal))
+			{
+			case 2:	seglist.push_back(LINESEG2(rc, rd));
+			case 1:	seglist.push_back(LINESEG2(ra, rb)); break;
+			}
+		}
+	}
+
+
+
+
+//============================================================================
+//								  2D CSG WORK
+//============================================================================
+
+inline
+bool CSGIntersect(const POLYGONE2& poly1, const POLYGONE2& poly2, POLYGONE2& dst)
+	{
+	VECTOR2 ra, rb;
+	LINESEG2LIST LsIn, LsOut;
+
+	Clip(poly1, poly2, LsIn);
+	Clip(poly2, poly1, LsIn);
+	return	CSGBuildClosedCircuit(&LsIn, &LsOut) ?
+			dst = POLYGONE2(LsOut), true :
+			false;
+	}
+
+inline
+unsigned CSGUnion(const POLYGONE2& poly1, const POLYGONE2& poly2,
+				  POLYGONE2& dst1, POLYGONE2& dst2)
+	{
+	unsigned ret;
+	VECTOR2 ra, rb, rc, rd;
+	LINESEG2LIST LsIn, LsOut1, LsOut2;
+
+	Clip(poly1, poly2, LsIn, true);
+	Clip(poly2, poly1, LsIn, true);
+	switch(ret = CSGBuildClosedCircuit(&LsIn, &LsOut1, &LsOut2))
+		{
+		case 2:	dst2 = POLYGONE2(LsOut2);
+		case 1:	dst1 = POLYGONE2(LsOut1); return ret;
+		default: return 0;
+		}
+	}
+
+inline
+unsigned CSGDifference(const POLYGONE2& poly1, const POLYGONE2& poly2,
+						POLYGONE2& dst1, POLYGONE2& dst2)
+	{
+	unsigned ret;
+	VECTOR2 ra, rb, rc, rd;
+	LINESEG2LIST LsIn, LsOut1, LsOut2;
+
+	Clip(poly1, poly2, LsIn, true);
+	Clip(poly2, poly1, LsIn, false);
+	switch(ret = CSGBuildClosedCircuit(&LsIn, &LsOut1, &LsOut2))
+		{
+		case 2:	dst2 = POLYGONE2(LsOut2);
+		case 1:	dst1 = POLYGONE2(LsOut1); return ret;
+		default: return 0;
+		}
+	}
+
+
+inline
+unsigned CSGSymmetricDifference(const POLYGONE2& poly1, const POLYGONE2& poly2,
+								POLYGONE2& dst1, POLYGONE2& dst2,
+								POLYGONE2& dst3, POLYGONE2& dst4)
+	{
+	unsigned i = 0;
+	POLYGONE2* dst[4] = { &dst1, &dst2, &dst3, &dst4 };
+	VECTOR2 ra, rb, rc, rd;
+	LINESEG2LIST LsIn1, LsIn2, LsOut1, LsOut2, LsOut3, LsOut4;
+
+	Clip(poly1, poly2, LsIn1, true);
+	Clip(poly2, poly1, LsIn1, false);
+	Clip(poly2, poly1, LsIn2, true);
+	Clip(poly1, poly2, LsIn2, false);
+
+	switch(CSGBuildClosedCircuit(&LsIn1, &LsOut1, &LsOut2))
+		{
+		case 2:	*dst[i++] = POLYGONE2(LsOut2);
+		case 1:	*dst[i++] = POLYGONE2(LsOut1);
+		}
+
+	switch(CSGBuildClosedCircuit(&LsIn2, &LsOut3, &LsOut4))
+		{
+		case 2:	*dst[i++] = POLYGONE2(LsOut4);
+		case 1:	*dst[i++] = POLYGONE2(LsOut3);
+		}
+
+	return i;
+	}
+
+inline
+unsigned CSGOperation(const POLYGONE2& poly1, const POLYGONE2& poly2,
+					  POLYGONE2* dst1, const unsigned csgmode = CSG_INTERSECT,
+					  POLYGONE2* dst2 = 0, POLYGONE2* dst3 = 0, POLYGONE2* dst4 = 0)
+	{
+	unsigned i = 0;
+	POLYGONE2* dst[4] = { dst1, dst2, dst3, dst4 };
+	VECTOR2 ra, rb, rc, rd;
+	LINESEG2LIST LsIn1, LsIn2, LsOut1, LsOut2, LsOut3, LsOut4;
+
+	switch(csgmode)
+		{	// setup clipping modes
+		case CSG_INTERSECT:
+			Clip(poly1, poly2, LsIn1, false);
+			Clip(poly2, poly1, LsIn1, false);
+
+			if(CSGBuildClosedCircuit(&LsIn1, &LsOut1))
+				*dst[i++] = POLYGONE2(LsOut1);
+		break;
+		case CSG_UNION:
+			Clip(poly1, poly2, LsIn1, true);
+			Clip(poly2, poly1, LsIn1, true);
+
+			switch(CSGBuildClosedCircuit(&LsIn1, &LsOut1, &LsOut2))
+				{
+				case 2:	*dst[i++] = POLYGONE2(LsOut2);
+				case 1:	*dst[i++] = POLYGONE2(LsOut1);
+				}
+		break;
+		case CSG_DIFFERENCE:
+			Clip(poly1, poly2, LsIn1, true);
+			Clip(poly2, poly1, LsIn1, false);
+
+			switch(CSGBuildClosedCircuit(&LsIn1, &LsOut1, &LsOut2))
+				{
+				case 2:	*dst[i++] = POLYGONE2(LsOut2);
+				case 1:	*dst[i++] = POLYGONE2(LsOut1);
+				}
+		break;
+		case CSG_SYMMETRIC_DIFFERENCE:
+			Clip(poly1, poly2, LsIn1, true);
+			Clip(poly2, poly1, LsIn1, false);
+			Clip(poly2, poly1, LsIn2, true);
+			Clip(poly1, poly2, LsIn2, false);
+
+			switch(CSGBuildClosedCircuit(&LsIn1, &LsOut1, &LsOut2))
+				{
+				case 2:	*dst[i++] = POLYGONE2(LsOut2);
+				case 1:	*dst[i++] = POLYGONE2(LsOut1);
+				}
+
+			switch(CSGBuildClosedCircuit(&LsIn2, &LsOut3, &LsOut4))
+				{
+				case 2:	*dst[i++] = POLYGONE2(LsOut4);
+				case 1:	*dst[i++] = POLYGONE2(LsOut3);
+				}
+		break;
+		}
+
+	return i;
+	}
+
+
+
+
+//============================================================================
+//							 2D POLY RANDOM GENERATORS
+//============================================================================
+
+/*
+===========================================================================
+	Routine:
+		GetRandomPoly(const VECTOR2& origin, FLOAT a, FLOAT b, FLOAT deg)
+
+	Description:
+		Генерация случайного ПРОИЗВОЛЬНОГО полигона
+
+	Parameters:
+		origin		- генерационный центр
+		a - b		- интервал РРСЧ
+		deg			- диапазон максимального приращения углов
+
+	Return Values:
+		случайный полигон
+
+	Remarks:
+		Алгоритм генерации произвольного 2D-полигона следующий:
+	из заданной точки origin как из центра проводятся лучи под углами
+	0 <= fi <= 360 к оси X. Начальное значение угла fi = 0, а последующие
+	углы расчитываются путем приращения на случайные значения Dfi = rnd(deg).
+	Максимальное приращение углов выбирается с таким расчетом, чтобы
+	минимальное число лучей было равно трем. Вдоль лучей откладываются
+	расстояния генерируемые как РРСЧ в диапазоне (a, b). Так мы получаем
+	вершины полигона.
+		
+===========================================================================
+*/
+inline
+POLYGONE2 GetRandomPoly(const VECTOR2& origin, FLOAT a, FLOAT b, FLOAT deg)
+	{
+	POLYGONE2 P(16);
+
+	for(FLOAT phi = 0, r = F_rand(a, b), rad = DEG2RADF(phi);
+			  phi <= 360;
+			  phi += F_rand(deg), r = F_rand(a, b), rad = DEG2RADF(phi))
+		P.push_back(origin + r * VECTOR2(::cos(rad), ::sin(rad)));
+
+	return	UI_rand(2) ? P : P.reverse(), P;
+	}
+
+
+/*
+===========================================================================
+	Routine:
+		GetRandomСPoly(const VECTOR2& origin, FLOAT a, FLOAT b, FLOAT deg)
+
+	Description:
+		Генерация случайного ВЫПУКЛОГО полигона
+
+	Parameters:
+		origin		- генерационный центр
+		a - b		- интервал РРСЧ
+		deg			- диапазон максимального приращения углов
+	Return Values:
+		выпуклый полигон
+
+	Remarks:
+		Алгоритм генерации выпуклого 2D-полигона следующий:
+	размещаем первую вершины полигона в исходной точке origin, и задаем
+	начальный угол fi = 0. Очередную вершины получаем путем проведения
+	из преыдущей вершины луча под углом fi  со случайным приращением и
+	откладываем вдоль этого луча расстояния РРСЧ в интервале (a, b).
+	Полученную точку тестируем на пригодность быть вершиной ВЫПУКЛОГО
+	полигона.
+===========================================================================
+*/
+inline
+POLYGONE2 GetRandomCPoly(const VECTOR2& origin, FLOAT a, FLOAT b, FLOAT deg)
+	{
+	POLYGONE2 P(16);
+	VECTOR2 q;
+	FLOAT phi = F_rand(deg), r = F_rand(a, b), rad = DEG2RADF(phi);
+
+	P.push_back(origin);
+	P.push_back(origin + r * VECTOR2(::cos(rad), ::sin(rad)));
+
+	while(phi += F_rand(deg), r = F_rand(a, b), rad = DEG2RADF(phi),
+		  phi <= 360)
+		{
+		q = P.back() + r * VECTOR2(::cos(rad), ::sin(rad));
+		if(OrientationConv(origin, P[1], q) == -1 &&
+		   OrientationConv(origin, P.back(), q) == -1 &&
+		   OrientationConv(*(P.end()-2), P.back(), q) == -1)
+				P.push_back(q);
+		}
+
+	return UI_rand(2) ? P : P.reverse(), P;
+	}
+
+
+
+
+
+
+
+//*************************************************************************
+//								POLYGONE3
+//*************************************************************************
+
+struct POLYGONE3
+	: public vectorex<VECTOR3>
+		// struct POLYGONE3
+{
+	typedef vectorex<VECTOR3> _Base;
+
+	// ctors
+	POLYGONE3()
+		{
+		}
+
+	explicit POLYGONE3(size_type _Reserve)
+		{
+		reserve(_Reserve);
+		}
+
+	POLYGONE3(size_type _Count, const VECTOR3& _Val)
+		: _Base(_Count, _Val)
+		{
+		}
+
+	// init via VECTOR3 array
+	POLYGONE3(const VECTOR3* _VectorList, size_type _Count)
+		: _Base(_VectorList, _Count)
+		{
+		}
+
+	
+	POLYGONE3(const _Base& _VectorList, size_type _Count)
+		: _Base(_VectorList, _Count)
+		{
+		}
+
+	// init with index-vector-list in VECTOR3 array
+	template<typename IndexListT>
+	POLYGONE3(const VECTOR3* _VectorList, const IndexListT* _IndexList,
+		size_type _Count)
+		: _Base(_VectorList, _IndexList, _Count)
+		{
+		}
+
+	template<typename IndexListT>
+	POLYGONE3(const _Base& _VectorList, const vectorex<IndexListT>& _IndexList)
+		: _Base(_VectorList, _IndexList)
+		{
+		}
+	
+	template<typename IndexListT>
+	POLYGONE3(const _Base& _VectorList, const vectorex<IndexListT>& _IndexList,
+		size_type _Count)
+		: _Base(_VectorList, _IndexList, _Count)
+		{
+		}
+
+	// construct from line segment chain
+	explicit POLYGONE3(const LINESEG3LIST& _SegList)
+		{
+		for(LINESEG3LIST::const_iterator i = _SegList.begin(); i != _SegList.end(); ++i)
+			_Base::push_back(i->Start);
+		}
+
+
+	// math
+	int isConvex() const;
+	bool isSelfIntersect() const;
+	FLOAT Area() const;
+	FLOAT AreaNC() const;
+	VECTOR3 Center() const;
+	VECTOR3 CenterNC() const;
+
+	
+	// service
+	VECTOR3 GetNormal() const
+		{
+		for(const_iterator	a = begin(), b = a + 1, c = b + 1;
+							b != end();
+							++a, ++b, ++c == end() ? c = begin() : c)
+			if(!isCollinear(*a, *b, *c))
+				return VECTOR3(*b - *a ^ *c - *b);
+
+		return VECTOR3::O;
+		}
+
+	POLYGONE2 ProjectXY() const
+		{
+		POLYGONE2 ret(size());
+		for(const_iterator i = begin(); i != end(); ++i)
+			ret.push_back((*i).ProjectXY());
+		return ret;
+		}
+
+	// transform
+	POLYGONE3& operator *= (const MATRIX16& m)
+		{
+		for(iterator i = begin(); i != end(); ++i)
+			(*i) *= m;
+		return *this;
+		}
+
+	POLYGONE3 operator * (const MATRIX16& m) const
+		{
+		POLYGONE3 ret(*this);
+		ret *= m;
+		return ret;
+		}
+};
+
+
+inline FLOAT POLYGONE3::Area() const
+{
+	FLOAT S = 0;
+	for(POLYGONE3::const_iterator a = begin(), b = a + 1, c = b + 1; c != end(); ++b, ++c)
+		S += abs(TriangleArea(*a, *b, *c))
+		;
+	return S;
+}
+
+inline FLOAT POLYGONE3::AreaNC() const
+{	// non-convex poly area
+	FLOAT S = 0;
+	for(POLYGONE3::const_iterator a = begin(), b = a + 1, c = b + 1; c != end(); ++b, ++c)
+		S += TriangleArea(*a, *b, *c)
+		;
+	return abs(S);
+}
+
+inline VECTOR3 POLYGONE3::Center() const
+{
+	VECTOR3 g(0.0F);
+	for(POLYGONE3::const_iterator a = begin(), b = a + 1, c = b + 1; c != end(); ++b, ++c)
+		g += abs(TriangleArea(*a, *b, *c)) * TriangleCenter(*a, *b, *c)
+		;
+	return g /= Area();
+}
+
+inline VECTOR3 POLYGONE3::CenterNC() const
+{	// non-convex poly center
+	VECTOR3 g(0.0F);
+	FLOAT triangle_area, sum = 0;
+	for(POLYGONE3::const_iterator a = begin(), b = a + 1, c = b + 1; c != end(); ++b, ++c)
+	{
+		triangle_area = TriangleArea(*a, *b, *c);
+		g += (*a + *b + *c) * triangle_area;
+		sum += 3 * triangle_area;
+	}
+	return g /= sum;
+}
+
+
+
+// тест ориентации точки p относительно 3D-полигона
+inline int OrientationConv(const POLYGONE3& poly, const VECTOR3& p)
+	{
+	const FLOAT Dist = (p - poly[0]) | poly.GetNormal();
+	// float-eq version
+	return	-EPSILON < Dist && Dist < EPSILON ? 0 :	// on poly-plane
+			Dist > 0 ? 1 :							// at right
+			-1;										// at left
+	//// non-float eq version
+	//return	Dist > 0 ? 1	// at right
+	//			: Dist == 0 ? 0	// on line
+	//			: -1;			// at left
+	}
+
+// тест пересечения полигона плоскостью
+inline bool isIntersect(const PARAMETRICPLANE& plane,
+						const vectorex<VECTOR3>/*POLYGONE3*/& poly)
+{
+	signed l = 0, r = 0;
+	for(vectorex<VECTOR3>::const_iterator i = poly.begin(); i != poly.end(); ++i)
+	{
+		switch(OrientationConv(plane, *i))
+		{
+		case -1:	l = 1; break;	// at left
+		case 1:		r = 1; break;	// at right
+		}
+
+		if(l * r)
+			return true;
+	}
+	return false;
+}
+
+inline bool isIntersect(const IMPLICITPLANE& plane,
+						const vectorex<VECTOR3>/*POLYGONE3*/& poly)
+{
+	signed l = 0, r = 0;
+	for(vectorex<VECTOR3>::const_iterator i = poly.begin(); i != poly.end(); ++i)
+	{
+		switch(OrientationConv(plane, *i))
+		{
+		case -1:	l = 1; break;	// at left
+		case 1:		r = 1; break;	// at right
+		}
+
+		if(l * r)
+			return true;
+	}
+	return false;
+}
+
+/*
+===========================================================================
+	Routine:
+		int Intersection(const POLYGONE3& poly, const VECTOR3& a, const VECTOR3& b,
+				 VECTOR3& q, float* t = 0, bool strong = false)
+
+	Description:
+		пересечение отрезка ab с плоским полигоном poly
+
+	Parameters:
+		poly	- плоский полигон
+		a,b		- input points
+		q		- output result
+		t		- koef. cross
+
+	Return Values:
+		-1		- отрезок и полигон параллельны
+		0		- непераллельный отрезок не пересекается с полигоном
+		1		- непераллельный отрезок и полигон касаются или пересекаются
+				В двух последних случаях через аргументы функции
+				параметр t и точка пересечения q.
+
+	Remarks:
+		Для проверки принадлежности точки q плоскому полигону poly
+		выполняется 2D-тест ориентации: предварительно выполняется
+		преобразование системы координат так, чтобы фронтальная плоскость XY
+		совпала с плоскостью полигона. В измененной системе координат
+		становится возможным применить плоский тест ориентации.
+
+		"strong" - касание пересечением не считается!
+===========================================================================
+*/
+
+#if 0
+		// *** non-templated - DEPRECATED version ***
+inline
+int Intersection(const POLYGONE3& poly, const VECTOR3& a, const VECTOR3& b,
+				 VECTOR3* q, float* t = 0, bool strong = false)
+{
+	VECTOR3 H(b - a), V(poly[1] - poly[0]), W(poly[2] - poly[1]), N(V ^ W), qq;
+	if(N | H)
+	{	// 1.
+		MATRIX16 m(H, -V, -W);
+		m.LoadInverse();
+		VECTOR3 tt = (poly[0] - a) * m;
+		if(t)
+			*t = tt.X;
+		qq = a + H * tt.X;
+		if(q)
+			*q = qq;
+
+		// 2.
+		MATRIX16 trans;									// for 2D project on XY plane
+		trans.LoadTransformation(poly[0], N.GetNormalized(), VECTOR3::O, VECTOR3::OZ);
+		POLYGONE2 poly_XY = (poly * trans).ProjectXY();	// transform poly & 2D XY-Proj(Z cull)
+		VECTOR2 q_XY((qq * trans).ProjectXY());			// transform q & q -> 2D XY-Proj(Z cull)
+
+		return	strong ?
+				tt.X > 0  && tt.X < 1  && OrientationConv(poly_XY, q_XY) == -1 :
+				tt.X >= 0 && tt.X <= 1 && OrientationConv(poly_XY, q_XY) < 1;
+	}
+	else return -1;
+}
+#else
+template<int (*ORIENTATIONPOINTPFN)(const POLYGONE2&, const VECTOR2&)>
+	int Intersection(const POLYGONE3& poly, const VECTOR3& a, const VECTOR3& b,
+					 VECTOR3* q, float* t = 0, bool strong = false)
+{
+	VECTOR3 H(b - a), V(poly[1] - poly[0]), W(poly[2] - poly[1]), N(V ^ W);
+	if(N | H)
+	{	// 1.
+		MATRIX16 m(H, -V, -W);
+		m.LoadInverse();
+		VECTOR3 tt((poly[0] - a) * m), qq(a + H * tt.X);
+		if(t) *t = tt.X;
+		if(q) *q = qq;
+
+		// 2.
+		MATRIX16 trans;									// for 2D project on XY plane
+		trans.LoadTransformation(poly[0], N.GetNormalized(), VECTOR3::O, VECTOR3::OZ);
+		POLYGONE2 poly_XY = (poly * trans).ProjectXY();	// transform poly & 2D XY-Proj(Z cull)
+		VECTOR2 q_XY((qq * trans).ProjectXY());			// transform q & q -> 2D XY-Proj(Z cull)
+
+		return	strong ?
+				tt.X > 0  && tt.X < 1  && ORIENTATIONPOINTPFN(poly_XY, q_XY) == -1 :
+				tt.X >= 0 && tt.X <= 1 && ORIENTATIONPOINTPFN(poly_XY, q_XY) < 1;
+	}
+	else return -1;
+}
+#endif
+
+
+template<int (*ORIENTATIONPOINTPFN)(const POLYGONE2&, const VECTOR2&)>
+	int IntersectionRay(const POLYGONE3& poly, const VECTOR3& polynormal,
+						const VECTOR3& rayP0, const VECTOR3& rayV,
+						VECTOR3* q = 0, FLOAT* t = 0, bool strong = false)
+{
+	if(polynormal | rayV)
+	{	// 1.
+		VECTOR3 V(poly[1] - poly[0]), W(poly[2] - poly[1]);
+		MATRIX16 m(rayV, -V, -W);
+		m.LoadInverse();
+		VECTOR3 tt((poly[0] - rayP0) * m), qq(rayP0 + rayV * tt.X);
+		if(t) *t = tt.X;
+		if(q) *q = qq;
+
+		// 2.
+		MATRIX16 trans;									// for 2D project on XY plane
+		trans.LoadTransformation(poly[0], polynormal.GetNormalized(), VECTOR3::O, VECTOR3::OZ);
+		POLYGONE2 poly_XY = (poly * trans).ProjectXY();	// transform poly & 2D XY-Proj(Z cull)
+		VECTOR2 q_XY((qq * trans).ProjectXY());			// transform q & q -> 2D XY-Proj(Z cull)
+
+		return	strong ?
+				ORIENTATIONPOINTPFN(poly_XY, q_XY) == -1 :
+				ORIENTATIONPOINTPFN(poly_XY, q_XY) < 1;
+	}
+	else return -1;
+}
+
+
+
+
+
+
+/*
+===========================================================================
+	Routine:
+	template<class _PlaneType>
+	bool Intersection(const POLYGONE3& convpoly, const _PlaneType& plane,
+					POLYGONE3& dst1, POLYGONE3& dst2)
+
+	Description:
+		рассечение ВЫПУКЛОГО полигона плоскостью
+
+	Parameters:
+		convpoly	- выпуклый полигон
+		plane		- секущая плоскость(IMPLICITPLANE/PARAMETRICPLANE)
+		dst1, dst2	- отсеченные полигоны
+
+	Return Values:
+		true		- было пересечение полгона и плоскости (см. результаты в dst1, dst2)
+		false		- пересечения не было (или касание контура полигона!)
+
+	Remarks:
+		Для проверки пересечения выпуклого полигона и плоскости используется
+		выпуклый тест ориентации. Контур полигона трактуется как набор отрезков
+		каждый из которых рассекается плоскостю. Затем, исходя из данных ориентации,
+		собираются результирующие полигоны
+
+		OrientationConv must be use EPSILON compare!
+===========================================================================
+*/
+template<class _PlaneType>
+bool Intersection(const POLYGONE3& convpoly, const _PlaneType& plane,
+				   POLYGONE3& dst1, POLYGONE3& dst2)
+{
+	if(::isIntersect(plane, convpoly))
+	{
+		VECTOR3 q;
+		FLOAT t;
+
+		// for all polys edge
+		for(POLYGONE3::const_iterator v1 = convpoly.begin(), v2 = convpoly.begin() + 1;
+			v1 != convpoly.end();
+			++v1, ++v2 == convpoly.end() ? v2 = convpoly.begin() : v2)
+		{
+			switch(::OrientationConv(plane, *v1))
+			{
+			case -1:
+				dst1.push_back(*v1); break;
+			case 0:	// `continue`: skip intersection test if coincided plane
+				dst1.push_back(*v1), dst2.push_back(*v1); continue; break; 
+			case 1:
+				dst2.push_back(*v1); break;
+			}
+
+			const PARAMETRICLINE3 line(*v1, *v2 - *v1);
+			if(::Intersection(plane, line, q, &t) && t > EPSILON && t < 1 - EPSILON)
+			{	// if has intersection & is on lineseg -- add to polys
+				dst1.push_back(q);
+				dst2.push_back(q);
+			}
+		}
+		return true;
+	}
+	else
+		return false;
+}
+
+
+// @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+// @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+// @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+
+//**********************************************
+typedef vectorex<POLYGONE3> POLYGONELIST;
+//**********************************************
+
+
+
+
+
+//*************************************************************************
+//								POLYHEDRONE
+//*************************************************************************
+
+struct POLYHEDRON
+{
+	typedef vectorex<VECTOR3> vertexlist;
+	typedef vertexlist::iterator vertexlist_iterator;
+	typedef vertexlist::const_iterator vertexlist_const_iterator;
+	typedef unsigned char edge_size;
+	typedef vectorex<edge_size> edgeindex;
+	typedef edgeindex::iterator edgeindex_iterator;
+	typedef edgeindex::const_iterator edgeindex_const_iterator;
+	typedef vectorex<edgeindex> edgelist;
+	typedef edgelist::iterator edgelist_iterator;
+	typedef edgelist::const_iterator edgelist_const_iterator;
+
+	// ctors
+	POLYHEDRON()
+		{
+		}
+
+	POLYHEDRON(size_t _VLReserve, size_t _ELReserve)
+		{
+		P_.reserve(_VLReserve), G_.reserve(_ELReserve);
+		}
+
+	// service
+		void AddVList(const VECTOR3* vlist, size_t size)
+			{
+			for(size_t i = 0; i < size; ++i)
+				P_.push_back(vlist[i]);
+			}
+
+		void AddEdge(const edge_size* elist, size_t size)
+			{
+			G_.push_back(edgeindex());
+			edgeindex& ei = G_.back();
+			ei.reserve(size);
+			for(size_t i = 0; i < size; ++i)
+				ei.push_back(elist[i]);
+			}
+
+		void AddEdge(edge_size e1, edge_size e2, edge_size e3, edge_size e4)
+			{
+			edgeindex ei;
+			ei.reserve(4);
+			ei.push_back(e1);
+			ei.push_back(e2);
+			ei.push_back(e3);
+			ei.push_back(e4);
+			G_.push_back(ei);
+			}
+
+	POLYGONE3 GetPoly(size_t iedge) const
+		{
+		const edgeindex& ei = G_[iedge];
+		POLYGONE3 ret(ei.size());
+		for(edgeindex_const_iterator i = ei.begin(); i != ei.end(); ++i)
+			ret.insert(P_[*i]);
+
+		return ret;
+		}
+
+	VECTOR3 GetNormal(size_t iedge) const
+		{
+		const edgeindex& ei = G_[iedge];
+		for(edgeindex_const_iterator a = ei.begin(), b = a + 1, c = b + 1;
+									 b != ei.end();
+									 ++a, ++b, ++c == ei.end() ? c = ei.begin() : c)
+			{
+			const VECTOR3 &va = P_[*a], &vb = P_[*b], &vc = P_[*c];
+			if(!isCollinear(va, vb, vc))
+				return VECTOR3(vb - va ^ vc - vb);
+			}
+
+		return VECTOR3::O;
+		}
+
+
+	bool isConvex() const;
+
+
+	vertexlist	P_;
+	edgelist	G_;
+};
+
+
+/*
+===========================================================================
+	Routine:
+		int isIntersect(const POLYHEDRON& PH, const POLYGONE3& poly)
+
+	Description:
+		тест пересечения плоскости с полиэдром
+
+	Parameters:
+		poly		- input poly
+
+	Return Values:
+		1			- есть пересечение
+		-1			- нет пересечения
+		0			- касание
+
+	Remarks:
+		Плоскость пересекает полиэдр, если существует хотя бы одна
+		пара вершин, лежащих от нее по разные стороны.
+
+		Свойство сепарабельности плоскости позволяет по разным значениям знака
+		НФ f(Pi) и f(Pj) обнаружить вершины полиэдра Pi и Pj, лежащие по разные стороны
+		от пересекающей его плоскости. Если же не найдется ни одной пары разносторонних
+		вершин, то пересечение отсутствует.
+===========================================================================
+*/
+inline int isIntersect(const POLYHEDRON& PH, const POLYGONE3& poly)
+	{
+	signed e = 0;
+	for(size_t i = 0, l = 0, r = 0; i < PH.P_.size(); ++i)
+		{
+		switch(OrientationConv(poly, PH.P_[i]))
+			{
+			case -1:	l = 1; break;	// at left
+			case 1:		r = 1; break;	// at right
+			case 0:		e = 1; break;	// on line
+			}
+
+		if(l * r)
+			return 1;
+		}
+
+	return e - 1;
+	}
+
+
+/*
+===========================================================================
+	Routine:
+		bool POLYHEDRON::isConvex()
+
+	Description:
+		тест выпуклости полиэдра
+
+	Parameters:
+
+	Return Values:
+		1			- выпуклый
+		0			- не выпуклый
+
+	Remarks:
+		У полиэдра нет ни одной пары вершин, лежащих по разные стороны
+		от любой грани. Свойство сепарабельности плоскости позволяет обнаружить
+		у полиэдра невыпуклую грань по противоположным знакам чисел nfG(Пi, pj)
+		и nfG(Пi, pk) в вершинах не входящих в грань П.
+===========================================================================
+*/
+inline bool POLYHEDRON::isConvex() const
+	{
+	POLYGONE3 poly;
+	for(size_t i = 0; i < G_.size(); ++i)
+		{
+		poly = GetPoly(i);
+		for(size_t l = 0, r = 0, j = 0; j < P_.size(); ++j)
+			{
+			switch(OrientationConv(poly, P_[j]))
+				{
+				case 1:		r = 1; break;	// at right
+				case -1:	l = 1; break;	// at left
+				}
+
+			if(l * r)
+				return false;
+			}
+		}
+
+	return true;
+	}
+
+
+/*
+===========================================================================
+	Routine:
+		int OrientationConv(const POLYHEDRON& PH, const VECTOR3& p)
+
+	Description:
+		тест ориентации точки p относительно ВЫПУКЛОГО полиэдра
+
+	Parameters:
+		PH		- выпуклый полиэдр
+		p				- input point
+
+	Return Values:
+		1 - точка вне,
+		-1 - точка внутри,
+		0 - на границе
+
+	Remarks:
+		Все внутренние точки р лежат с одинаковых сторон от всех граней П.
+		Для любой внешней точки всегда найдется пара граней Пi и Пj
+		относительно которых она расположена с разных сторон. Все точки не
+		идентифицированные как внутренние или внешние считаются граничными
+		(расположенные на гранях, ребрах или вершинах выпуклого полиэдра).
+===========================================================================
+*/
+inline int OrientationConv(const POLYHEDRON& PH, const VECTOR3& p)
+	{
+	int e = 0;
+	for(size_t	r = 0, l = 0, m = 0; m < PH.G_.size(); ++m)
+		{
+		switch(OrientationConv(PH.GetPoly(m), p))
+			{
+			case 1:		r = 1; break;
+			case -1:	l = 1; break;
+			case 0:		e = 1; break;
+			}
+
+			if(l * r)
+				return 1;
+		}
+
+	return e - 1;
+	}
+
+
+/*
+===========================================================================
+	Routine:
+		int OrientationGab(const POLYHEDRON& PH, const VECTOR3& p,
+							bool strong = false)
+
+	Description:
+		тест устанавливает только ГАРАНТИРОВАННУЮ НЕПРЕНАДЛЕЖНОСТЬ p
+		произвольному полиэдру.
+
+	Parameters:
+		PH		- выпуклый полиэдр
+		p				- input point
+
+	Return Values:
+		1 - ГАРАНТИРОВАННО ВНЕ
+		0 - возможно внутри
+
+	Remarks:
+		Определяет путем сравнения ее координат с габаритными параметрами
+		полиэдра.
+===========================================================================
+*/
+inline bool OrientationGab(const POLYHEDRON& PH, const VECTOR3& point,
+				    bool strong = false)
+	{
+	BBOX3 bbox(&PH.P_[0], PH.P_.size());
+	return !isInside(point, bbox, strong);
+	}
+
+
+inline int OrientationRay( const POLYHEDRON& PH, const VECTOR3& q)
+{
+	int f = 1;
+
+reset:
+	VECTOR3 V = V3e_rand();
+	for(size_t i = 0, size = PH.G_.size(); i < size; ++i)
+	{
+		const POLYGONE3 poly(PH.GetPoly(i));
+		MATRIX16 M(V, poly[0] - poly[1], poly[1] - poly[2]);
+
+		if(M.LoadInverse()) {
+			const VECTOR3 tqgam((poly[0] - q) * M), c(q + V * tqgam.X);
+
+			// matrix for 2D project on XY plane
+			MATRIX16 trans;		
+			trans.LoadTransformation(poly[0], poly.GetNormal().GetNormalized(),
+									 VECTOR3::O, VECTOR3::OZ);
+			// ... 2D project and run 2D orientation test:
+			const int r = OrientationRay((poly * trans).ProjectXY(),
+										 (c * trans).ProjectXY());
+
+			if(tqgam.X > 0) {
+				if(r == -1)	f = -f;
+				else if(r == 0) goto reset;
+			}
+			else if(tqgam.X == 0 && r != 1)
+				return 0;
+		}
+	}
+
+	return f;
+}
+
+
+/*
+===========================================================================
+	Routine:
+		int Intersection(const POLYHEDRON* PH, VECTOR3* a, VECTOR3* b,
+				 VECTOR3* c = 0, VECTOR3* d = 0,
+				 bool strong = false, bool internal = false)
+
+	Description:
+		ВНЕШНЕЕ/ВНУТРЕННЕЕ отсечение отрезка аb ВЫПУКЛЫМ полиэдром PH.
+		Отсечение отрезка полиэдром на основе ВЫПУКЛОГО теста ориентации точки.
+
+	Parameters:
+		a,b		- input line
+		PH		- input polyhedron
+
+	Return Values:
+		Алгоритм возвращает через аргумент аb (и cd - если отсечение внутреннее!)
+		НЕОТСЕЧЕННЫЙ ФРАГМЕНТ ОТРЕЗКА ВНУТРИ ПОЛИГОНА, а сама функция возвращает
+		признак видимости отрезка ав в "окне" полигона Р.
+
+			0	- если отрезок целиком находится ВНЕ полигона и целиком им
+				  отсекается.
+		    1/2	- если отрезок целиком или частично расположенвнутри полигона.
+				  (+ сколько отрезков получилось (1 или 2))
+
+	Remarks:
+	1.	При внутреннем отсечеини отрезка выпуклым полигоном отбор неотсеченных фрагментов
+		выполняется по условию их внешней ориентации (OrientationConv(PH, p) == 1).
+		Число таких фрагментов может быть от нуля (весь отрезок лежит внутри
+		полигона) до двух (средняя часть отрезка экранируется полигоном).
+	2.	При отсечении отрезка НЕВЫПУКЛЫМ полигоном необходимо вместо выплого теста
+		ориентации точки использовать угловые или лучевые тесты для определения
+		ориентации средних точек фрагментов относительно произвольного полиэдра.
+		При внешнем отсечении выбираются фрагменты, средние точки которых лежат ВНУТРИ
+		полиэдра, а при ВНУТРЕННЕМ -- фрагменты со средними точками ВНЕ полиэдра.
+===========================================================================
+*/
+int Intersection(const POLYHEDRON* PH, VECTOR3* A, VECTOR3* B,
+				 VECTOR3* C = 0, VECTOR3* D = 0,
+				 bool strong = false, bool internal = false);
+
+
+
+//********************************************************************************************
+//									POLYHEDRONE CSG
+//********************************************************************************************
+#ifdef _DEBUG
+#include <stdio.h>
+inline void DEBUG_PrintPoly(const POLYGONE3& poly)
+	{
+	for(POLYGONE3::const_iterator i = poly.begin(); i != poly.end(); ++i)
+		printf("glVertex3f(%.2fF, %.2fF, %.2fF);\n", (*i).X, (*i).Y, (*i).Z);
+	printf("\n");
+	}
+
+inline void DEBUG_PrintPolyList(const POLYGONELIST& dstlist)
+	{
+	static unsigned num = 0;
+	for(POLYGONELIST::const_iterator i = dstlist.begin(); i != dstlist.end(); ++i)
+		{
+		printf("//=== POLYGONE3 %u ===\n", num++);
+		DEBUG_PrintPoly(*i);
+		}
+	}
+#endif // _DEBUG
+	
+	
+inline bool isIntersectGab(const POLYGONE3& poly1, const POLYGONE3& poly2,
+						   bool strong = false)
+	{	// fast gabarite test
+	const BBOX3 bbox1(&poly1[0], poly1.size()), bbox2(&poly2[0], poly2.size());
+	return isIntersect(bbox1, bbox2, strong);
+	}
+	
+inline bool isIntersectGab(const POLYGONE3& poly1, const BBOX3& bbox2,
+						   bool strong = false)
+	{	// fast gabarite test
+	const BBOX3 bbox1(&poly1[0], poly1.size());
+	return isIntersect(bbox1, bbox2, strong);
+	}
+
+
+// int _Orientation2D() ...
+
+
+bool Intersection(const VECTOR3& clipperN, const VECTOR3& clipperP0, const VECTOR3& clipperP1,
+				  const POLYGONE3& clipped, const VECTOR3& clippedN, 
+				  POLYGONE3& extr, POLYGONE3& intr, bool coincided = false);
+
+bool Intersection(const POLYGONE3& clipper, const POLYGONELIST& clippedlist,
+				  POLYGONELIST& dstlist);
+
+inline void CSGIntersection(const POLYHEDRON& PH, POLYGONELIST& dstlist)
+{	// отсечение полиэдром списка полигонов
+	POLYGONELIST tmp(dstlist.size());
+	for(size_t i = 0, size = PH.G_.size(); i < size; ++i)
+	{
+		if(Intersection(PH.GetPoly(i), dstlist, tmp))
+			dstlist.swap(tmp);
+		tmp.clear();
+	}
+}
+
+inline void CSGIntersection(const POLYHEDRON& PH1, const POLYHEDRON& PH2,
+							POLYGONELIST& PH1list, POLYGONELIST& PH2list)
+{	// отсечение полиэдром полиэдра
+	POLYGONELIST edges(8);
+	for(size_t i = 0, size = PH1.G_.size(); i < size; ++i)
+	{
+		edges.push_back(PH1.GetPoly(i));
+		CSGIntersection(PH2, edges);
+		PH1list += edges;
+		edges.clear();
+	}
+	for(size_t i = 0, size = PH2.G_.size(); i < size; ++i)
+	{
+		edges.push_back(PH2.GetPoly(i));
+		CSGIntersection(PH1, edges);
+		PH2list += edges;
+		edges.clear();
+	}
+}
+
+inline
+void CSGUnion(const POLYHEDRON& PH1, const POLYHEDRON& PH2, POLYGONELIST& dstlist)
+{
+	POLYGONELIST PH1list(32), PH2list(32);
+	CSGIntersection(PH1, PH2, PH1list, PH2list);
+	for(POLYGONELIST::iterator i = PH1list.begin(); i != PH1list.end(); ++i)
+		if(OrientationRay(PH2, (*i).CenterNC()) == 1)
+			dstlist.push_back(*i)
+			;
+	for(POLYGONELIST::iterator i = PH2list.begin(); i != PH2list.end(); ++i)
+		if(OrientationRay(PH1, (*i).CenterNC()) == 1)
+			dstlist.push_back(*i)
+			;
+}
+
+inline
+bool CSGIntersection(const POLYHEDRON& PH1, const POLYHEDRON& PH2, POLYGONELIST& dstlist)
+{
+	POLYGONELIST PH1list(32), PH2list(32);
+
+	CSGIntersection(PH1, PH2, PH1list, PH2list);
+
+	for(POLYGONELIST::iterator i = PH1list.begin(); i != PH1list.end(); ++i)
+		if(OrientationRay(PH2, (*i).CenterNC()) == -1)
+			dstlist.push_back(*i)
+			;
+
+	if(dstlist.empty())
+		return false;
+
+	for(POLYGONELIST::iterator i = PH2list.begin(); i != PH2list.end(); ++i)
+		if(OrientationRay(PH1, (*i).CenterNC()) == -1)
+			dstlist.push_back(*i)
+			;
+
+	return dstlist.empty();
+}
+
+inline
+bool CSGDifference(const POLYHEDRON& PH1, const POLYHEDRON& PH2, POLYGONELIST& dstlist)
+{
+	POLYGONELIST PH1list(32), PH2list(32);
+
+	CSGIntersection(PH1, PH2, PH1list, PH2list);
+
+	for(POLYGONELIST::iterator i = PH1list.begin(); i != PH1list.end(); ++i)
+		if(OrientationRay(PH2, (*i).CenterNC()) == 1)
+			dstlist.push_back(*i)
+			;
+
+	if(dstlist.empty())
+		return false;
+
+	for(POLYGONELIST::iterator i = PH2list.begin(); i != PH2list.end(); ++i)
+		if(OrientationRay(PH1, (*i).CenterNC()) == -1)
+			dstlist.push_back(*i)
+			;
+
+	return dstlist.empty();
+}
+
+inline
+void SortPolyList(const POLYHEDRON& PH1, const POLYHEDRON& PH2,
+				  const POLYGONELIST& PH1list, const POLYGONELIST& PH2list,
+				  POLYGONELIST& PH1inner, POLYGONELIST& PH1outer,
+				  POLYGONELIST& PH2inner, POLYGONELIST& PH2outer)
+{
+	for(POLYGONELIST::const_iterator i = PH1list.begin(); i != PH1list.end(); ++i)
+	{
+		switch(OrientationRay(PH2, (*i).CenterNC()))
+		{
+		case 1:	 PH1outer.push_back(*i); break;
+		case -1: PH1inner.push_back(*i); break;
+		}
+	}
+	for(POLYGONELIST::const_iterator i = PH2list.begin(); i != PH2list.end(); ++i)
+	{
+		switch(OrientationRay(PH1, (*i).CenterNC()))
+		{
+		case 1:	 PH2outer.push_back(*i); break;
+		case -1: PH2inner.push_back(*i); break;
+		}
+	}
+}

@@ -1,0 +1,117 @@
+//
+// sample ENTITIES.DEF file
+// test version
+//
+
+
+{
+"worldspawn" (0 0 255) (16 16 16)
+"maptitle" "" "environement" "" "cd_track" "" "viewdistance" "8192" "chaptertitle" "" "gametitle" "" "mapteam" "" "defaultteam" ""
+"startdark" "newunit"
+
+
+}
+
+{
+"ammo_bullets" (0 0 255) (32 32 32)
+
+
+
+}
+
+{
+"ammo_cells" (0 255 0) (32 32 32)
+
+
+
+}
+
+{
+"ammo_shells" (255 0 0) (32 32 32)
+
+
+
+}
+
+
+{
+"info_camp" (0 255 0) (16 16 16)
+
+
+
+}
+
+{
+"info_null" (0 255 0) (16 16 16)
+
+
+
+}
+
+{
+"info_notnull" (0 255 0) (16 16 16)
+
+
+
+}
+
+
+{
+"item_armor_body" (0 0 255) (48 48 48)
+
+
+
+}
+
+{
+"item_armor_combat" (0 0 255) (48 48 48)
+
+
+
+}
+
+{
+"item_armor_heavy" (255 0 255) (48 48 48)
+
+
+
+}
+
+
+{
+"func_group" (128 0 255) ?
+"targetname" "" "target" ""
+"SUSPENDED"
+This is scription for func_group.
+Used to group brushes together just for editor convenience.
+They are turned into normal brushes by the utilities.
+}
+
+{
+"func_wall" (128 0 255) ?
+"targetname" "" "target" "" "attack" "0"
+"SUSPENDED" "INVISIBLE"
+This is scription for func_wall.
+"targetname":	- targetting name
+"target":		- target
+}
+
+{
+"func_door" (128 0 255) ?
+"targetname" "" "target" "" "wait" "0.0" "weapon" "7"
+"TOGGLE" "START_OPEN" "NOMONSTER"
+TOGGLE		wait in both the start and end states for a trigger event.
+START_OPEN	the door to moves to its destination when spawned, and operate in reverse.  It is used to temporarily or permanently close off an area when triggered (not useful for touch or takedamage doors).
+NOMONSTER	monsters will not trigger this door
+
+"model2"	.md3 model to also draw
+"angle"		determines the opening direction
+"targetname" if set, no touch field will be spawned and a remote button or trigger field activates the door.
+"speed"		movement speed (100 default)
+"wait"		wait before returning (3 default, -1 = never return)
+"lip"		lip remaining at end of move (8 default)
+"dmg"		damage to inflict when blocked (2 default)
+"color"		constantLight color
+"light"		constantLight radius
+"health"	if set, the door must be shot open
+}

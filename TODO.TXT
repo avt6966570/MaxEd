@@ -1,0 +1,1830 @@
+1.	Модифкация брашей в 3D.
+	(
+	Добавить в VECTOR3:
+		eProjectPlane(=VIEWMODE) GetAxialPlaneForTexture(const VECTOR3& facenormal);
+		void GetTextureDims(/*const VECTOR3& normal,*/ unsigned& dim1, unsigned& dim2);	// this = normal
+		static
+		void GetTextureDims(const VECTOR3 faceverts[], unsigned& dim1, unsigned& dim2);
+		
+		static VECTOR3 TEXTUREAXIS[6][3] = {	// order correspondent to VIEWMODE, eProjectPlane
+		// normal			S				T
+		VECTOR3::OZ		VECTOR3::OX		VECTOR3::OY // VM_FRONT
+		VECTOR3::NOX	VECTOR3::OZ		VECTOR3::OY // VM_LEFT
+		VECTOR3::NOY	VECTOR3::OX		VECTOR3::OZ // VM_BOTTOM
+		VECTOR3::NOZ	VECTOR3::NOX	VECTOR3::OY // VM_BACK
+		VECTOR3::OX		VECTOR3::NOZ	VECTOR3::OY // VM_RIGHT
+		VECTOR3::OY		VECTOR3::OX		VECTOR3::NOZ // VM_TOP		
+		};	
+		void GetTextureAxis(/*const VECTOR3& normal,*/, VECTOR3& axisS, VECTOR3& axisT);	// this = normal
+		
+		// и
+		VIEWMODE GetOrthoModeForPerspective(const VECTOR3& cam_forward);
+	)
+	
+	
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// EditWnd.cpp : implementation file
+//
+
+#include "StdAfx.h"
+#include "MaxEd.h"
+#include "EditWnd.h"
+#include "Camera.h"
+
+
+/* DEBUG */ static void DebugDrawSimpleParallelepiped()
+{
+	glBegin(GL_QUADS);
+	glVertex3i(0,0,0);
+	glVertex3i(128,0,0);
+	glVertex3i(128,64,0);
+	glVertex3i(0,64,0);
+
+	glVertex3i(0,0,0);
+	glVertex3i(0,64,0);
+	glVertex3i(0,64,-512);
+	glVertex3i(0,0,-512);
+
+	glVertex3i(0,0,0);
+	glVertex3i(0,0,-512);
+	glVertex3i(128,0,-512);
+	glVertex3i(128,0,0);
+
+
+	glVertex3i(0,0,-512);
+	glVertex3i(0,64,-512);
+	glVertex3i(128,64,-512);
+	glVertex3i(128,0,-512);
+
+	glVertex3i(128,0,0);
+	glVertex3i(128,0,-512);
+	glVertex3i(128,64,-512);
+	glVertex3i(128,64,0);
+
+	glVertex3i(0,64,0);
+	glVertex3i(128,64,0);
+	glVertex3i(128,64,-512);
+	glVertex3i(0,64,-512);
+	glEnd();
+}
+
+
+
+// draw as glRect() but wire
+static inline void myglWireRectf(float x1, float y1, float x2, float y2) {
+	glBegin(GL_LINE_LOOP);
+		glVertex2f(x1, y1);
+		glVertex2f(x2, y1);
+		glVertex2f(x2, y2);
+		glVertex2f(x1, y2);
+	glEnd();
+}
+
+// throw cursor position as 3ds max
+static inline bool ThrowingCursorPos(POINT& cursorpos)
+{
+	const int xmax = ::GetSystemMetrics(SM_CXSCREEN) - 1,
+			  ymax = ::GetSystemMetrics(SM_CYSCREEN) - 1;
+	if(cursorpos.x == 0)	{ cursorpos.x = xmax - 1; return true; }
+	if(cursorpos.y == 0)	{ cursorpos.y = ymax - 1; return true; }
+	if(cursorpos.x == xmax)	{ cursorpos.x = 1; return true; }
+	if(cursorpos.y == ymax)	{ cursorpos.y = 1; return true; }
+	return false;
+}
+
+
+
+
+//*****************************************************************************
+//							STATIC CEditWnd MEMBERS
+//*****************************************************************************
+const FLOAT CEditWnd::ORTHOCAMDEEP[VM_TOTALDIMS] = { 
+	(FLOAT)INT_MAX,	// VM_FRONT
+	(FLOAT)INT_MIN,	// VM_LEFT
+	(FLOAT)INT_MIN,	// VM_BOTTOM
+	(FLOAT)INT_MIN,	// VM_BACK
+	(FLOAT)INT_MAX,	// VM_RIGHT
+	(FLOAT)INT_MAX	// VM_TOP
+};
+
+// mouse capture info
+CEditWnd* CEditWnd::pEditWindow[WL_MAXWINDOW];
+CEditWnd* CEditWnd::pActiveWindow;
+
+CEditWnd::eViewMoveMode	CEditWnd::VIEWMOVEMODE;
+
+CEditWnd::eEditingStatus CEditWnd::EDITINGSTATUS =
+		CEditWnd::eEditingStatus::ES_SELECTION;
+CEditWnd::eModifyMode CEditWnd::MODIFYMODE =
+		CEditWnd::eModifyMode::MM_TRANSLATE;
+
+
+BBOX3 CEditWnd::DRAGMODIFYBOX;
+BBOX3::eBoxSideInfo	CEditWnd::DRAGMODIFYSIDE;
+BBOX2::eBoxSideInfo	CEditWnd::DRAGMODIFY2DSIDE;
+MATRIX16 CEditWnd::DRAGMODIFYMATRIX(1,0,0,0,
+									0,1,0,0,
+									0,0,1,0,
+									0,0,0,1);
+
+
+CPoint	CEditWnd::ptPrevPoint;
+VECTOR2	CEditWnd::vMouseOrigin;
+VECTOR2	CEditWnd::vMouseOriginNS;
+VECTOR2	CEditWnd::vMouseCurrent;
+VECTOR2	CEditWnd::vMouseCurrentNS;
+
+
+// cursors
+const HCURSOR CEditWnd::CURSOR_ARROW = ::LoadCursor(0, IDC_ARROW);
+const HCURSOR CEditWnd::CURSOR_SIZEALL = ::LoadCursor(0, IDC_SIZEALL);
+const HCURSOR CEditWnd::CURSOR_SIZENESW = ::LoadCursor(0, IDC_SIZENESW);
+const HCURSOR CEditWnd::CURSOR_SIZENS = ::LoadCursor(0, IDC_SIZENS);
+const HCURSOR CEditWnd::CURSOR_SIZENWSE = ::LoadCursor(0, IDC_SIZENWSE);
+const HCURSOR CEditWnd::CURSOR_SIZEWE = ::LoadCursor(0, IDC_SIZEWE);
+const HCURSOR CEditWnd::CURSOR_HIDE = 0;
+HCURSOR	CEditWnd::CURSOR_ROTATE = 0;
+HCURSOR	CEditWnd::hCurrentCursor = CURSOR_ARROW;
+
+
+
+
+//*****************************************************************************
+//								CEditWnd MESSAGE MAP
+//*****************************************************************************
+
+BEGIN_MESSAGE_MAP(CEditWnd, COpenGLWnd)
+	//{{AFX_MSG_MAP(CEditorWnd)
+	ON_WM_PAINT()
+	ON_WM_LBUTTONDOWN()
+	ON_WM_LBUTTONUP()
+	ON_WM_LBUTTONDBLCLK()
+	ON_WM_MBUTTONDOWN()
+	ON_WM_MBUTTONUP()
+	ON_WM_MBUTTONDBLCLK()
+	ON_WM_RBUTTONDOWN()
+	ON_WM_RBUTTONUP()
+	ON_WM_RBUTTONDBLCLK()
+	ON_WM_KEYDOWN()
+	ON_WM_SYSKEYDOWN()
+	ON_WM_MOUSEMOVE()
+	ON_COMMAND_RANGE(ID_POPUPMENU_WINDOWPROPERTIES_FRONT,
+					 ID_POPUPMENU_WINDOWPROPERTIES_PERSPECTIVE,
+					 OnChangeViewMode)
+	ON_COMMAND_RANGE(ID_POPUPMENU_WINDOWPROPERTIES_RENDEROPTIONS_MODE_BOX,
+					 ID_POPUPMENU_WINDOWPROPERTIES_RENDEROPTIONS_MODE_LIGHTWIRE,
+					 OnChangeRenderingMode)
+	ON_COMMAND_RANGE(ID_POPUPMENU_WINDOWPROPERTIES_RENDEROPTIONS_SHADEMODEL_GLFLAT,
+					 ID_POPUPMENU_WINDOWPROPERTIES_RENDEROPTIONS_SHADEMODEL_GLSMOOTH,
+					 OnChangeShadeModel)
+	ON_COMMAND_RANGE(ID_POPUPMENU_WINDOWPROPERTIES_RENDEROPTIONS_POLYGONMODE_FRONT_GLPOINT,
+					 ID_POPUPMENU_WINDOWPROPERTIES_RENDEROPTIONS_POLYGONMODE_BACK_GLFILL,
+					 OnChangePolygonMode)
+	ON_COMMAND(ID_POPUPMENU_WINDOWPROPERTIES_RENDEROPTIONS_CULLFACE, OnChangeCullFace)
+	ON_COMMAND(ID_POPUPMENU_WINDOWPROPERTIES_DISABLEWINDOW, OnChangeDisableWindow)
+	//}}AFX_MSG_MAP
+END_MESSAGE_MAP()
+
+
+
+
+//*****************************************************************************
+//						CEditWnd MEMBER IMPLEMENTATION
+//*****************************************************************************
+
+IMPLEMENT_DYNCREATE(CEditWnd, COpenGLWnd)
+
+CEditWnd::CEditWnd()
+	: m_fScale(1), m_vOrigin(VECTOR2::O)	/* DEBUG */
+{
+	// TODO: add member initialization code here
+}
+
+CEditWnd::~CEditWnd()
+{
+}
+
+void CEditWnd::DrawCoordSpaceOverlayIcon() const
+{	// don`t forget load "standart window-ortho matrix (0-w-0-h)"!
+	::glPushMatrix();
+		::glTranslatef(PREFERENCES::CSI_WINDOWSHIFT, PREFERENCES::CSI_WINDOWSHIFT, 0);
+		switch(m_WindowInfo.eMode)
+		{
+		case VM_LEFT:	::glRotatef( 90, 0, 1, 0); break;
+		case VM_BOTTOM: ::glRotatef(-90, 1, 0, 0); break;
+		case VM_BACK:	::glRotatef(180, 0, 1, 0); break;
+		case VM_RIGHT:	::glRotatef(-90, 0, 1, 0); break;
+		case VM_TOP:	::glRotatef( 90, 1, 0, 0); break;
+		case VM_PERSPECTIVE: ::glRotatef( Camera::pCurrent->m_vAngles[0], 1, 0, 0),	// NOTE `-`?
+							 ::glRotatef(-Camera::pCurrent->m_vAngles[1], 0, 1, 0);
+							 break;
+		default:		break; //case VM_FRONT:
+		}
+		::glTranslatef(-PREFERENCES::CSI_WINDOWSHIFT, -PREFERENCES::CSI_WINDOWSHIFT, 0);
+
+		::glBegin(GL_LINES);
+			// DRAW X-AXIS
+			::glColor3ubv(COLOR3::RED);
+			::glVertex2i(PREFERENCES::CSI_WINDOWSHIFT, PREFERENCES::CSI_WINDOWSHIFT),
+				::glVertex2i(PREFERENCES::CSI_WINDOWSHIFT +
+							 PREFERENCES::CSI_SIZE, PREFERENCES::CSI_WINDOWSHIFT);
+
+			// DRAW Y-AXIS
+			::glColor3ubv(COLOR3::GREEN);
+			::glVertex2i(PREFERENCES::CSI_WINDOWSHIFT, PREFERENCES::CSI_WINDOWSHIFT),
+				::glVertex2i(PREFERENCES::CSI_WINDOWSHIFT,
+							 PREFERENCES::CSI_WINDOWSHIFT + PREFERENCES::CSI_SIZE);
+
+			// DRAW Z-AXIS
+			::glColor3ubv(COLOR3::BLUE);
+			::glVertex3i(PREFERENCES::CSI_WINDOWSHIFT, PREFERENCES::CSI_WINDOWSHIFT, 0),
+				::glVertex3i(PREFERENCES::CSI_WINDOWSHIFT,
+							 PREFERENCES::CSI_WINDOWSHIFT, PREFERENCES::CSI_SIZE);
+		::glEnd();
+	::glPopMatrix();
+}
+
+void CEditWnd::DrawCoordSpace() const
+{
+	::glLineWidth(3);
+	::glBegin(GL_LINES);
+	// DRAW X-AXIS
+	::glColor3ubv(COLOR3::RED);
+	::glVertex3i(0, 0, 0), ::glVertex3i(64, 0, 0);
+
+	// DRAW Y-AXIS
+	::glColor3ubv(COLOR3::GREEN);
+	::glVertex3i(0, 0, 0), ::glVertex3i(0, 64, 0);
+
+	// DRAW Z-AXIS
+	::glColor3ubv(COLOR3::BLUE);
+	::glVertex3i(0, 0, 0), ::glVertex3i(0, 0, 64);
+	::glEnd();
+	::glLineWidth(1);
+}
+
+void CEditWnd::DrawWindowLabelOverlay() const
+{	// don`t forget load "standart window-ortho matrix (0-w-0-h)"!
+	::glColor3ubv(PREFERENCES::Current.cLabelColor);
+	::glRasterPos2i(VIEWLABEL::VL_LEFTSHIFT, m_iHeight-VIEWLABEL::VL_TOPSHIFT);
+	::glListBase(VIEWLABEL::VL_BASELISTINDEX);
+	::glCallLists(m_WindowInfo.sLabel.uLabelSize,
+		GL_UNSIGNED_BYTE, m_WindowInfo.sLabel.szLabel);
+}
+
+void CEditWnd::DrawGrid(float fViewLeft, float fViewRight,
+						float fViewBottom, float fViewTop) const
+{
+	/*** CALC WINDOW GRID BOUNDS ***/
+	const float	xb = 512 * ::floor(fViewLeft/512),
+				xe = 512 * ::ceil(fViewRight/512),
+				yb = 512 * ::floor(fViewBottom/512),
+				ye = 512 * ::ceil(fViewTop/512);
+
+	/*** DRAW MAJOR GRID ***/
+	if(PREFERENCES::Current.sGrid.Major.bShow && 
+	   PREFERENCES::Current.sGrid.Major.nStep * m_fScale >= 4)
+	{
+		::glColor3ubv(PREFERENCES::Current.sGrid.Major.cColor);
+		if(PREFERENCES::Current.sGrid.Major.bDotted)
+		{
+			::glPointSize(PREFERENCES::Current.sGrid.Major.fWidth);
+			::glBegin(GL_POINTS);
+			for (float x = xb; x < xe; x += PREFERENCES::Current.sGrid.Major.nStep)
+				//if ((int)x & theEditorOptions.sMinorGridInfo.nStep - 1)
+					for (float y = yb; y < ye; y += PREFERENCES::Current.sGrid.Major.nStep)
+						//if ((int)y & theEditorOptions.sMinorGridInfo.nStep - 1)
+							::glVertex2f(x, y);
+		}
+		else
+		{
+			if(PREFERENCES::Current.sGrid.Major.bStipple)
+			{
+				::glEnable(GL_LINE_STIPPLE);
+				::glLineStipple(PREFERENCES::Current.sGrid.Major.nStippleFactor,
+								PREFERENCES::Current.sGrid.Major.uStippleMask);
+			}
+
+			::glLineWidth(PREFERENCES::Current.sGrid.Major.fWidth);
+			::glBegin(GL_LINES);
+			for (float x = xb; x < xe; x += PREFERENCES::Current.sGrid.Major.nStep)
+				if ((int)x & PREFERENCES::Current.sGrid.Minor.nStep - 1)
+					::glVertex2f(x, yb), ::glVertex2f(x, ye);
+			for (float y = yb; y < ye; y += PREFERENCES::Current.sGrid.Major.nStep)
+				if ((int)y & PREFERENCES::Current.sGrid.Minor.nStep - 1)
+					::glVertex2f(xb, y), ::glVertex2f(xe, y);
+		}
+		::glEnd();
+		::glDisable(GL_LINE_STIPPLE);
+	}
+
+	/*** DRAW MINOR GRID ***/
+	if(PREFERENCES::Current.sGrid.Minor.bShow &&
+	   PREFERENCES::Current.sGrid.Minor.nStep * m_fScale >= 4)
+	{
+		::glColor3ubv(PREFERENCES::Current.sGrid.Minor.cColor);
+		if(PREFERENCES::Current.sGrid.Minor.bDotted)
+		{
+			::glPointSize(PREFERENCES::Current.sGrid.Minor.fWidth);
+
+			::glBegin(GL_POINTS);
+			for (float x = xb; x < xe; x += PREFERENCES::Current.sGrid.Minor.nStep)
+				for (float y = yb; y < ye; y += PREFERENCES::Current.sGrid.Minor.nStep)
+					glVertex2f(x, y);
+		}
+		else
+		{
+			if(PREFERENCES::Current.sGrid.Minor.bStipple)
+			{
+				::glEnable(GL_LINE_STIPPLE);
+				::glLineStipple(PREFERENCES::Current.sGrid.Minor.nStippleFactor,
+								PREFERENCES::Current.sGrid.Minor.uStippleMask);
+			}
+
+			::glLineWidth(PREFERENCES::Current.sGrid.Minor.fWidth);
+			::glBegin(GL_LINES);
+			for (float x = xb; x < xe; x += PREFERENCES::Current.sGrid.Minor.nStep)
+				::glVertex2f(x, yb), ::glVertex2f(x, ye);
+			for (float y = yb; y < ye; y += PREFERENCES::Current.sGrid.Minor.nStep)
+				::glVertex2f(xb, y), ::glVertex2f(xe, y);
+		}
+		::glEnd();
+		::glDisable(GL_LINE_STIPPLE);
+	}
+
+	/*** DRAW COORDINATE AXIS ***/
+	if(PREFERENCES::Current.sGrid.Axis.bShow)
+	{
+		::glColor3ubv(PREFERENCES::Current.sGrid.Axis.cColor);
+
+		if(PREFERENCES::Current.sGrid.Axis.bDotted)
+		{
+			::glPointSize(PREFERENCES::Current.sGrid.Axis.fWidth);
+			::glBegin(GL_POINTS);
+			for (float x = xb; x < xe; x += PREFERENCES::Current.sGrid.Axis.nDotStep)
+				::glVertex2f(x, 0);
+			for (float y = yb; y < ye; y += PREFERENCES::Current.sGrid.Axis.nDotStep)
+				::glVertex2f(0, y);
+		}
+		else 
+		{
+			if(PREFERENCES::Current.sGrid.Axis.bStipple)
+			{
+				::glEnable(GL_LINE_STIPPLE);
+				::glLineStipple(PREFERENCES::Current.sGrid.Axis.nStippleFactor,
+								PREFERENCES::Current.sGrid.Axis.uStippleMask);
+			}
+
+			::glLineWidth(PREFERENCES::Current.sGrid.Axis.fWidth);
+			::glBegin(GL_LINES);
+			::glVertex2f(xb, 0), ::glVertex2f(xe, 0);	// Ox-axis
+			::glVertex2f(0, yb), ::glVertex2f(0, ye);	// Oy-axis
+		}
+		::glEnd();
+		::glDisable(GL_LINE_STIPPLE);
+	}
+}
+
+void CEditWnd::DrawActiveWindowRect() const
+{	// don`t forget load "standart window-ortho matrix (0-w-0-h)"!
+	::glColor3ubv(COLOR3::YELLOW);
+	::glLineWidth(6);
+	::glBegin(GL_LINE_LOOP);
+		::glVertex2i(0, 0);
+		::glVertex2i(m_iWidth, 0);
+		::glVertex2i(m_iWidth, m_iHeight);
+		::glVertex2i(0, m_iHeight);
+	::glEnd();
+	::glLineWidth(1);
+}
+
+
+void CEditWnd::DrawBrush(const BRUSH& b) const
+{
+	const GLenum drawmode =
+		m_WindowInfo.sRenderOptions.eMode > DM_SOLID_WIRE ?	// TODO: insert as parameter in WINDOWINFO/render opt ???
+							GL_POLYGON : GL_LINE_LOOP;	// textured/wire-line
+	// for all brush faces...
+	for(size_t f = 0, fsize = b.flist.size(); f < fsize; ++f)
+	{
+		// draw face
+		if(m_WindowInfo.eType == VT_2D)
+			switch(m_WindowInfo.eMode)
+			{
+			case VM_FRONT:	if(b.flist[f].normal.Z <= 0) continue; break;
+			case VM_LEFT:	if(b.flist[f].normal.X >= 0) continue; break;
+			case VM_BOTTOM:	if(b.flist[f].normal.Y >= 0) continue; break;
+			case VM_BACK:	if(b.flist[f].normal.Z >= 0) continue; break;
+			case VM_RIGHT:	if(b.flist[f].normal.X <= 0) continue; break;
+			case VM_TOP:	if(b.flist[f].normal.Y <= 0) continue; break;
+			}
+
+		// if texture mode -- bind face texture
+		if(m_WindowInfo.sRenderOptions.eMode > DM_SOLID_WIRE)
+			::glBindTexture(GL_TEXTURE_2D, b.flist[f].texdef->texID);
+
+		::glBegin(drawmode);
+		::glNormal3fv(b.flist[f].normal);
+		for(size_t v = 0, vsize = b.flist[f].ivlist.size(); v < vsize; ++v)
+		{
+			::glTexCoord2fv(b.flist[f].ivlist[v].T);
+			::glVertex3fv(b.vlist[b.flist[f].ivlist[v].I]);
+		}
+		::glEnd();
+	}
+}
+
+void CEditWnd::DrawFace(const FACE* face, const BRUSH* owner) const
+{
+	if(m_WindowInfo.eType == VT_2D)
+		switch(m_WindowInfo.eMode)
+		{
+		case VM_FRONT:	if(face->normal.Z <= 0) return;
+		case VM_LEFT:	if(face->normal.X >= 0) return;
+		case VM_BOTTOM:	if(face->normal.Y >= 0) return;
+		case VM_BACK:	if(face->normal.Z >= 0) return;
+		case VM_RIGHT:	if(face->normal.X <= 0) return;
+		case VM_TOP:	if(face->normal.Y <= 0) return;
+		}
+
+	// if texture mode -- bind face texture
+	if(m_WindowInfo.sRenderOptions.eMode > DM_SOLID_WIRE)	// bind texture for texture mode
+		::glBindTexture(GL_TEXTURE_2D, face->texdef->texID);
+
+	::glBegin(m_WindowInfo.sRenderOptions.eMode > DM_SOLID_WIRE ?
+							GL_POLYGON : GL_LINE_LOOP);
+	::glNormal3fv(face->normal);
+	for(size_t v = 0, vsize = face->ivlist.size(); v < vsize; ++v)
+	{
+		::glTexCoord2fv(face->ivlist[v].T);
+		::glVertex3fv(owner->vlist[face->ivlist[v].I]);
+	}
+	::glEnd();
+}
+
+void CEditWnd::SetActiveView(bool wndDisabled)
+{
+	if(this != CEditWnd::pActiveWindow && !wndDisabled)
+	{
+		CEditWnd* prevActiveWindow = CEditWnd::pActiveWindow;
+		CEditWnd::pActiveWindow = this;
+		prevActiveWindow->COpenGLWnd::RedrawWindow();
+					this->COpenGLWnd::RedrawWindow();
+	}
+}
+
+
+// CEditWnd message handlers
+
+void CEditWnd::OnPaint()
+{
+	float w, h, left, right, bottom, top;
+
+	CPaintDC dc(this);
+
+	// TODO: Add your message handler code here
+	// *** MAKE OPENGL RENDERING CONTEXT CURRENT ***
+	if (!::wglMakeCurrent(dc, m_hGLRC))
+	{
+		TRACE0("UpdateWindow() -> COGLWnd::OnPaint() -> wglMakeCurrent(): failed\n"
+			   "cannot make rendering context current\n");
+		return;
+	}
+
+	// *** SETUP MODELVIEW MATRIX ***
+	::glMatrixMode(GL_MODELVIEW);
+	::glLoadIdentity();
+
+	// *** SETUP VIEWPORT ***
+	::glViewport(0, 0, m_iWidth, m_iHeight);
+
+	// *** CLEAR BACKGROUND ***
+	PREFERENCES::Current.bUseGlobalClearColor ?
+		::glClearColor(PREFERENCES::Current.clrGlobalClearColor.red,
+						PREFERENCES::Current.clrGlobalClearColor.green,
+						PREFERENCES::Current.clrGlobalClearColor.blue,
+						PREFERENCES::Current.clrGlobalClearColor.alpha) :
+		::glClearColor(m_WindowInfo.sRenderOptions.clrClearColor.red,
+						m_WindowInfo.sRenderOptions.clrClearColor.green,
+						m_WindowInfo.sRenderOptions.clrClearColor.blue,
+						m_WindowInfo.sRenderOptions.clrClearColor.alpha);
+
+	::glClear(GL_COLOR_BUFFER_BIT);
+
+	if(m_WindowInfo.bDisable)
+		goto disable_window;
+
+	// *** SETUP RENDERING OPTIONS - DRAWMODE ***
+	switch(m_WindowInfo.sRenderOptions.eMode)
+	{
+	case DM_BBOX:
+		::glDisable(GL_ALPHA_TEST);
+		::glDisable(GL_BLEND);
+		::glDisable(GL_DEPTH_TEST);
+		::glDisable(GL_LIGHTING);
+		::glDisable(GL_LINE_SMOOTH);
+		::glDisable(GL_LINE_STIPPLE);
+		::glDisable(GL_POINT_SMOOTH);
+		::glDisable(GL_TEXTURE_1D);
+		::glDisable(GL_TEXTURE_2D);
+		break;
+	case DM_WIRE:
+		::glDisable(GL_ALPHA_TEST);
+		::glDisable(GL_BLEND);
+		::glDisable(GL_DEPTH_TEST);
+		::glDisable(GL_LIGHTING);
+		::glDisable(GL_LINE_SMOOTH);
+		::glDisable(GL_LINE_STIPPLE);
+		::glDisable(GL_POINT_SMOOTH);
+		::glDisable(GL_TEXTURE_1D);
+		::glDisable(GL_TEXTURE_2D);
+		break;
+	case DM_SOLID:
+	case DM_SOLID_WIRE:
+		::glDisable(GL_ALPHA_TEST);
+		::glDisable(GL_BLEND);
+		::glDisable(GL_DEPTH_TEST);
+		::glDisable(GL_LIGHTING);
+		::glDisable(GL_LINE_SMOOTH);
+		::glDisable(GL_LINE_STIPPLE);
+		::glDisable(GL_POINT_SMOOTH);
+		::glDisable(GL_TEXTURE_1D);
+		::glDisable(GL_TEXTURE_2D);
+		::glShadeModel(m_WindowInfo.sRenderOptions.ShadeModel);
+		break;
+
+	case DM_TEXTURE:
+	case DM_TEXTURE_WIRE:
+		::glEnable(GL_TEXTURE_2D);
+		::glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+		::glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+		::glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+		::glDisable(GL_BLEND);
+//off	::glEnable(GL_DEPTH_TEST);
+//off	::glDepthFunc(GL_LEQUAL);
+		::glShadeModel(m_WindowInfo.sRenderOptions.ShadeModel);
+		break;
+
+	case DM_BLEND:
+	case DM_BLEND_WIRE:
+		// TODO: ???
+		ASSERT(0);
+		break;
+
+	case DM_LIGHT:
+	case DM_LIGHT_WIRE:
+		// TODO: ???
+		ASSERT(0);
+		break;
+	}
+
+	// + setup Polygon Mode
+	::glPolygonMode(GL_FRONT, m_WindowInfo.sRenderOptions.PolyRasterMethod[0]);
+	::glPolygonMode(GL_BACK,  m_WindowInfo.sRenderOptions.PolyRasterMethod[1]);
+
+	// + setup Cull Face
+	m_WindowInfo.sRenderOptions.bCullFace ?
+		::glEnable(GL_CULL_FACE) : ::glDisable(GL_CULL_FACE);
+
+
+	// *** CHECK VIEWTYPE & VIEWMODE ***
+	switch(m_WindowInfo.eType)
+	{
+	case VT_2D:
+
+		// SETUP CENTERED `FRONT` ORTHO PROJECTION MATRIX
+		w  = (m_iWidth>>1) / m_fScale;
+		h  = (m_iHeight>>1)/ m_fScale;
+		left	= m_vOrigin.X - w;
+		right	= m_vOrigin.X + w;
+		bottom	= m_vOrigin.Y - h;
+		top		= m_vOrigin.Y + h;
+		::glMatrixMode(GL_PROJECTION);
+		::glLoadIdentity();
+		::glOrtho(left, right, bottom, top, -FLT_MAX, FLT_MAX);
+
+		// DRAW GRID
+		DrawGrid(left, right, bottom, top);
+
+		// SETUP PROJECTION MODE
+		switch(m_WindowInfo.eMode)
+		{
+		case VM_LEFT:	::glRotatef( 90, 0, 1, 0); break;
+		case VM_BOTTOM: ::glRotatef(-90, 1, 0, 0); break;
+		case VM_BACK:	::glRotatef(180, 0, 1, 0); break;
+		case VM_RIGHT:	::glRotatef(-90, 0, 1, 0); break;
+		case VM_TOP:	::glRotatef( 90, 1, 0, 0); break;
+		default:		break; //case VM_FRONT:
+		}
+
+		// DRAW WORLD BRUSH LIST
+		::glColor3ubv(COLOR3::WHITE);
+		for(BRUSH::brushlist::const_iterator b = BRUSH::WORLDBRUSHLIST.begin();
+			b != BRUSH::WORLDBRUSHLIST.end();
+			++b)
+			if(!b->selected)
+				DrawBrush(*b);
+
+		// DRAW SELECTED BRUSH LIST
+		::glColor3ubv(COLOR3::RED);
+		if(CEditWnd::EDITINGSTATUS == ES_MODIFY)
+		{
+			::glMultMatrixf(DRAGMODIFYMATRIX);
+			::glDisable(GL_TEXTURE_2D);
+			::glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+		}
+		::glEnable(GL_LINE_STIPPLE);
+		::glLineStipple(1, 0xF0F0);
+		::glLineWidth(2);
+		for(BRUSH::ptrbrushlist::const_iterator b = BRUSH::SELECTEDBRUSHLIST.begin();
+			b != BRUSH::SELECTEDBRUSHLIST.end();
+			++b)
+				DrawBrush(**b);
+		::glLineWidth(1);
+		::glDisable(GL_LINE_STIPPLE);
+
+		// DRAW SELECTED FACE
+		if(FACE::SELECTED.pFace)
+			DrawFace(FACE::SELECTED.pFace, FACE::SELECTED.pFaceOwner);
+	break;
+
+	case VT_3D:
+		// CLEAR DEPTH BUFFER
+		// ::glClear(GL_DEPTH_BUFFER_BIT);
+
+		// SETUP PROJECTION MATRIX
+		::glMatrixMode(GL_PROJECTION);
+		::glLoadIdentity();
+		::gluPerspective(
+			RAD2DEGF(2 * ::atan((float)m_iHeight / m_iWidth)),	//yFov
+			(float)m_iWidth / m_iHeight,						// screenaspect
+			2,  8192);
+		::glRotatef(Camera::pCurrent->m_vAngles[0],  1, 0, 0);
+		::glRotatef(-Camera::pCurrent->m_vAngles[1],  0, 1, 0);
+		::glTranslatef(-Camera::pCurrent->m_vOrigin[0],
+					   -Camera::pCurrent->m_vOrigin[1],
+					   -Camera::pCurrent->m_vOrigin[2]);
+
+		// 3D DRAW COORD SPACE AXIS (OX/OY/OZ)
+		DrawCoordSpace();
+
+		// 3D DRAW WORLD BRUSH LIST
+		::glColor3ubv(COLOR3::WHITE);
+		for(BRUSH::brushlist::const_iterator b = BRUSH::WORLDBRUSHLIST.begin();
+			b != BRUSH::WORLDBRUSHLIST.end();
+			++b)
+			if(!b->selected)
+				DrawBrush(*b);
+
+		// 3D DRAW SELECTED BRUSH LIST
+		// setup selection color
+		::glColor3ubv(COLOR3::RED);
+		// if we are in modify mode -- load modify matrix
+		if(CEditWnd::EDITINGSTATUS == ES_MODIFY)
+		{
+			::glMultMatrixf(DRAGMODIFYMATRIX);
+			::glDisable(GL_TEXTURE_2D);
+			::glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+			::glDisable(GL_CULL_FACE);
+		}
+		// draw selected brushes
+		for(BRUSH::ptrbrushlist::const_iterator b = BRUSH::SELECTEDBRUSHLIST.begin();
+			b != BRUSH::SELECTEDBRUSHLIST.end();
+			++b)
+				DrawBrush(**b);
+
+		// DRAW SELECTED FACE
+		if(FACE::SELECTED.pFace)
+			DrawFace(FACE::SELECTED.pFace, FACE::SELECTED.pFaceOwner);
+	break;
+	}
+
+	::glBindTexture(GL_TEXTURE_2D, 0);
+	::glDisable(GL_TEXTURE_2D);
+
+	// *** DRAW 2D OVERLAYS (3D-AXIS ICON/WINDOW LABEL/ACTIVE WND RECT) ***
+disable_window:
+	// LOAD "STANDART WINDOW-ORTHO MATRIX (0-w-0-h)"
+	::glMatrixMode(GL_PROJECTION);
+	::glLoadIdentity();
+	::glOrtho(0, m_iWidth, 0, m_iHeight, -PREFERENCES::CSI_SIZE, PREFERENCES::CSI_SIZE);
+	
+	// *** DRAW COORD SPACE ICON ***
+	if(PREFERENCES::Current.bShowCoordSpaceIcon)
+		DrawCoordSpaceOverlayIcon();
+
+	// *** DRAW WINDOW LABEL ***
+	if(PREFERENCES::Current.bShowWindowLabel)
+		DrawWindowLabelOverlay();
+
+	// *** DRAW ACTIVE WINDOW`s YELLOW RECT ***
+	if(PREFERENCES::Current.bShowActiveWindowRect &&
+		this == CEditWnd::pActiveWindow)
+		DrawActiveWindowRect();
+
+	// *** SWAP COLOR BUFFERS ***
+	::glFlush();
+	::SwapBuffers(dc);
+
+	// Do not call COpenGLWnd::OnPaint() for painting messages
+}
+
+void CEditWnd::OnLButtonDown(UINT nFlags, CPoint point)
+{
+	// TODO: Add your message handler code here and/or call default
+	if(m_WindowInfo.bDisable)
+		return COpenGLWnd::OnLButtonDown(nFlags, point);	// exit if disable
+
+	// *** SET CAPTURE/MOUSE INFO ***
+	ptPrevPoint = point;
+	ScreenToWorld(point, vMouseOrigin, PREFERENCES::Current.bSnapToGrid);
+	ScreenToWorld(point, vMouseOriginNS, false);
+	CWnd::SetCapture();
+	CWnd::SetFocus();
+	SetActiveView();
+
+	// *** DRAG EDITVIEW MODE ***
+	if(::GetKeyState(VK_MENU) & 0x8000)		// ALT
+		switch(m_WindowInfo.eType)
+		{
+		case VT_2D:
+			::SetCursor(hCurrentCursor = CURSOR_SIZEALL);	// set new cursor
+			CEditWnd::EDITINGSTATUS = ES_VIEWMOVE;			// set status
+			CEditWnd::VIEWMOVEMODE = VMM_2DMOVE;			// set 2d move cam mode
+			break;
+		case VT_3D:
+			// ENABLE `FLY` MODE
+			if(CEditWnd::EDITINGSTATUS != ES_VIEWMOVE)
+			{
+				::SetCursor(hCurrentCursor = CURSOR_HIDE);	// hide cursor
+				CEditWnd::EDITINGSTATUS = ES_VIEWMOVE;		// set new status
+				CEditWnd::VIEWMOVEMODE = VMM_3DFLY;			// set 3d `fly` cam mode
+			}
+			// DISABLE `FLY` MODE
+			else
+			{
+				::SetCursor(hCurrentCursor = CURSOR_ARROW);
+				CEditWnd::EDITINGSTATUS = ES_SELECTION;		// reset status
+			}
+			break;
+		}
+	// *** SELECTION MODE (LMB + SHIFT (+ CTRL)) ***
+	else if(nFlags & MK_SHIFT)
+		switch(m_WindowInfo.eType)
+		{
+		// 2D SELECTION
+		case VT_2D:
+			if(BRUSH* pSelBrush = ::GetSelectionInWorldBrushList(
+				VECTOR3(vMouseOriginNS, m_WindowInfo.eMode, ORTHOCAMDEEP[m_WindowInfo.eMode]),
+				VECTOR3::INVIEW[m_WindowInfo.eMode])
+				)
+			{
+				// now we need clear face selection
+				if(FACE::SELECTED.pFace) {
+					FACE::SELECTED.pFace = 0;
+					FACE::SELECTED.pFaceOwner = 0;
+				}
+
+				// toggle select / deselect brush
+				if(pSelBrush->selected = !pSelBrush->selected)
+					BRUSH::SELECTEDBRUSHLIST.push_back(pSelBrush);
+				else
+					BRUSH::SELECTEDBRUSHLIST.erase(BRUSH::SELECTEDBRUSHLIST.find(pSelBrush));
+				RedrawWindow(WU_ALLEDIT);
+			}
+			break;
+		// 3D SELECTION
+		case VT_3D:
+			{{{
+			FACE* pSelFace = 0;
+			// calc ray direction (dir)
+			float u = (float)(m_iHeight - point.y - 1 - (m_iHeight>>1)) / (m_iWidth>>1),
+				  r = (float)(point.x - (m_iWidth>>1)) / (m_iWidth>>1);
+			VECTOR3 dir(-Camera::pCurrent->m_vForward * 1 +
+						Camera::pCurrent->m_vRight * r +
+						(Camera::pCurrent->m_vForward ^ Camera::pCurrent->m_vRight) * u);
+			dir.Normalize();
+
+			if(BRUSH* pSelBrush =
+				::GetSelectionInWorldBrushList(Camera::pCurrent->m_vOrigin, dir, &pSelFace))
+			{
+				// FACE SELECTION
+				if(nFlags & MK_CONTROL)
+				{
+					// select face if non selected brush only
+					if(BRUSH::SELECTEDBRUSHLIST.empty())
+					{
+						if(FACE::SELECTED.pFace == pSelFace)
+						{
+							FACE::SELECTED.pFace = 0;
+							FACE::SELECTED.pFaceOwner = 0;
+						}
+						else
+						{
+							FACE::SELECTED.pFace = pSelFace;
+							FACE::SELECTED.pFaceOwner = pSelBrush;
+						}
+					}
+				}
+				// BRUSH SELECTION
+				else
+				{
+					// now we need clear face selection
+					if(FACE::SELECTED.pFace) {
+						FACE::SELECTED.pFace = 0;
+						FACE::SELECTED.pFaceOwner = 0;
+					}
+
+					if(pSelBrush->selected = !pSelBrush->selected)
+						BRUSH::SELECTEDBRUSHLIST.push_back(pSelBrush);
+					else
+						BRUSH::SELECTEDBRUSHLIST.erase(BRUSH::SELECTEDBRUSHLIST.find(pSelBrush));
+				}
+				RedrawWindow(WU_ALLEDIT);
+			}
+			}}}
+			break;
+		}
+	// *** CREATE & MODIFY MODE (2D ONLY) ***
+	else if(m_WindowInfo.eType == VT_2D)	// !MK_SHIFT: create & modify for 2D mode only
+	{
+		// +++ LMB & NON-SELECT (CREATE BRUSH MODE) +++
+		if(BRUSH::SELECTEDBRUSHLIST.empty())
+			CEditWnd::EDITINGSTATUS = ES_CREATE;
+		// +++ LMB & SELECTED (TRANS/NUSCALE SELECTED BRUSHES) +++
+		else if(!FACE::SELECTED.pFace)
+		{
+			// build dragbox-modify allbox
+			DRAGMODIFYBOX.Clear();
+			for(BRUSH::ptrbrushlist::const_iterator s = BRUSH::SELECTEDBRUSHLIST.begin();
+				s != BRUSH::SELECTEDBRUSHLIST.end();
+				++s)
+					DRAGMODIFYBOX += (*s)->bbox;
+
+			// get dragbox-modify 2dside
+			DRAGMODIFY2DSIDE = DRAGMODIFYBOX.Get2dSide(vMouseOriginNS, m_WindowInfo.eMode);
+			
+			// set new editing status & modify mode
+			CEditWnd::EDITINGSTATUS = ES_MODIFY;
+			CEditWnd::MODIFYMODE = nFlags & MK_CONTROL ?
+													MM_SHEAR :
+			DRAGMODIFY2DSIDE == BBOX2::eBoxSideInfo::BSI_INSIDE ?
+													MM_TRANSLATE : MM_RESIZE;
+		}
+	}
+
+	COpenGLWnd::OnLButtonDown(nFlags, point);
+}
+
+void CEditWnd::OnLButtonUp(UINT nFlags, CPoint point)
+{
+	// TODO: Add your message handler code here and/or call default
+	if(m_WindowInfo.bDisable)
+		return COpenGLWnd::OnLButtonUp(nFlags, point);
+	
+	// *** SET MOUSE CAPTURE INFO ***
+	ptPrevPoint = point;
+	ScreenToWorld(point, vMouseCurrent, PREFERENCES::Current.bSnapToGrid);
+	ScreenToWorld(point, vMouseCurrentNS, false);
+
+	// *** RELEASE MOUSE CAPTURE ***
+	switch(m_WindowInfo.eType)
+	{
+	case VT_2D:
+		switch(CEditWnd::EDITINGSTATUS)
+		{
+		case ES_SELECTION:
+		break;
+		case ES_VIEWMOVE:
+		break;
+		case ES_CREATE:
+		break;
+		default:
+		//case ES_MODIFY:
+			// END MODIFY DRAGGING
+
+			// 1. Update brushes data (verexes, normals, texture coords, bboxses...)
+			if(CEditWnd::MODIFYMODE == MM_TRANSLATE)
+			{
+				// move only (without normals update & inc bbox only)
+				const VECTOR3 delta(vMouseCurrent - vMouseOrigin, m_WindowInfo.eMode);
+				BRUSH::TranslateSelectedBrushList(delta);
+			}
+			else if(CEditWnd::MODIFYMODE != MM_DRAGCREATE)
+				BRUSH::TranslateSelectedBrushList(DRAGMODIFYMATRIX);// update vertex data
+			// 2. Reset modifying matrix
+			DRAGMODIFYMATRIX.LoadIdentity();
+			// 3. Reset status to neutral (reset only BEFORE final redraw)
+			CEditWnd::EDITINGSTATUS = ES_SELECTION;
+			// 4. Final window redraw
+			RedrawWindow(WU_ALLEDIT);
+		break;
+		}
+
+		CEditWnd::EDITINGSTATUS = ES_SELECTION;
+		if(hCurrentCursor != CURSOR_ARROW)
+			::SetCursor(hCurrentCursor = CURSOR_ARROW);			// set standart cursor
+		::ReleaseCapture();										// unset window capture
+	break;
+	case VT_3D:
+		if(CEditWnd::EDITINGSTATUS != ES_VIEWMOVE)
+		{
+			::SetCursor(hCurrentCursor = CURSOR_ARROW);			// set standart cursor
+			::ReleaseCapture();									// unset window capture
+			CEditWnd::EDITINGSTATUS = ES_SELECTION;				// reset status
+		}
+	break;
+	}
+
+	COpenGLWnd::OnLButtonUp(nFlags, point);
+}
+
+void CEditWnd::OnLButtonDblClk(UINT nFlags, CPoint point)
+{
+	// TODO: Add your message handler code here and/or call default
+	if(m_WindowInfo.bDisable)
+		return COpenGLWnd::OnLButtonDblClk(nFlags, point);
+
+	switch(m_WindowInfo.eType)
+	{
+	case VT_2D:
+
+		// if LMB + ALT
+		if(::GetKeyState(VK_MENU) & 0x8000)
+		{
+			// *** SET CAPTURE/MOUSE INFO ***
+			CWnd::SetCapture();
+			CWnd::SetFocus();
+			::SetCursor(hCurrentCursor = CURSOR_SIZENS);
+
+			// *** SET 2D ZOOM CAM MODE ***
+			CEditWnd::EDITINGSTATUS = ES_VIEWMOVE;			// set status to viewmove
+			CEditWnd::VIEWMOVEMODE = VMM_2DSCALE;			// set 2d zoom cam mode
+
+			if(PREFERENCES::Current.bForceCenteredWhenScaleMode)
+			{
+				m_vOrigin = vMouseOriginNS;
+				COpenGLWnd::RedrawWindow(NULL, NULL, RDW_INVALIDATE | RDW_UPDATENOW);
+			}
+		}
+		break;
+	case VT_3D:
+		// ...
+		break;
+	}
+
+	COpenGLWnd::OnLButtonDblClk(nFlags, point);
+}
+
+void CEditWnd::OnMButtonDown(UINT nFlags, CPoint point)
+{
+	// TODO: Add your message handler code here and/or call default
+	if(m_WindowInfo.bDisable)
+		return COpenGLWnd::OnMButtonDown(nFlags, point);
+
+	// *** SET CAPTURE ***
+	ptPrevPoint = point;
+	CWnd::SetCapture();
+	CWnd::SetFocus();
+	SetActiveView();
+
+	// *** PROCESS MOUSE ***
+	switch(m_WindowInfo.eType)
+	{
+	case VT_2D:
+		CEditWnd::EDITINGSTATUS = ES_VIEWMOVE;			// set status to viewmove
+		CEditWnd::VIEWMOVEMODE = VMM_2DMOVE;			// set 2d move cam mode
+		::SetCursor(hCurrentCursor = CURSOR_SIZEALL);
+		break;
+	case VT_3D:
+		if(CEditWnd::EDITINGSTATUS == ES_VIEWMOVE && CEditWnd::VIEWMOVEMODE == VMM_3DFLY)
+		{
+			CEditWnd::EDITINGSTATUS = ES_SELECTION;
+			::SetCursor(hCurrentCursor = CURSOR_ARROW);
+			::ReleaseCapture();
+		}
+		else
+		{
+			CEditWnd::EDITINGSTATUS = ES_VIEWMOVE;
+			CEditWnd::VIEWMOVEMODE = VMM_3DFLY;
+			::SetCursor(hCurrentCursor = CURSOR_HIDE);
+		}
+		break;
+	}
+
+	COpenGLWnd::OnMButtonDown(nFlags, point);
+}
+
+void CEditWnd::OnMButtonUp(UINT nFlags, CPoint point)
+{
+	// TODO: Add your message handler code here and/or call default
+	if(m_WindowInfo.bDisable)
+		return COpenGLWnd::OnMButtonUp(nFlags, point);
+
+	// *** RELEASE MOUSE CAPTURE ***
+	if(m_WindowInfo.eType == VT_2D)
+	{
+		CEditWnd::EDITINGSTATUS = ES_SELECTION;			// reset editing status
+		::SetCursor(hCurrentCursor = CURSOR_ARROW);
+		::ReleaseCapture();
+	}
+
+	COpenGLWnd::OnMButtonUp(nFlags, point);
+}
+
+void CEditWnd::OnMButtonDblClk(UINT nFlags, CPoint point)
+{
+	// TODO: Add your message handler code here and/or call default
+	if(m_WindowInfo.bDisable)
+		return COpenGLWnd::OnMButtonDblClk(nFlags, point);
+
+	switch(m_WindowInfo.eType)
+	{
+	case VT_2D:
+		// *** SET 2D ZOOM CAM MODE ***
+		CEditWnd::EDITINGSTATUS = ES_VIEWMOVE;			// set status to viewmove
+		CEditWnd::VIEWMOVEMODE = VMM_2DSCALE;			// set 2d zoom cam mode
+
+		// *** MOUSE CAPTURE ***
+		CWnd::SetCapture();
+		::SetCursor(hCurrentCursor = CURSOR_SIZENS);
+
+		if(PREFERENCES::Current.bForceCenteredWhenScaleMode)
+		{
+			m_vOrigin = vMouseOriginNS;
+			COpenGLWnd::RedrawWindow(NULL, NULL, RDW_INVALIDATE | RDW_UPDATENOW);
+		}
+		break;
+	case VT_3D:
+		// ... ... ...
+		break;
+	}
+
+	COpenGLWnd::OnMButtonDblClk(nFlags, point);
+}
+
+void CEditWnd::OnRButtonDown(UINT nFlags, CPoint point)
+{
+	// TODO: Add your message handler code here and/or call default
+	
+	// *** SET MOUSE CAPTURE INFO ***
+	ptPrevPoint = point;
+	ScreenToWorld(point, vMouseOrigin, PREFERENCES::Current.bSnapToGrid);
+	ScreenToWorld(point, vMouseOriginNS, false);
+	//CWnd::SetCapture();
+	//CWnd::SetFocus();
+
+	// *** SET ACTIVE WINDOW ***
+	SetActiveView(m_WindowInfo.bDisable);
+
+	// *** PREPARE WINDOW OPTIONS POPUP MENU ***
+
+	// show if clicked in window-label area
+	if(point.x < 100 && point.y < 25)
+	{
+		CMenu mnuWindowOptions, mnuRenderOptions, mnuRenderMode,
+			  mnuPolygonMode, mnuPolygonModeFront, mnuPolygonModeBack,
+			  mnuShadeModel;
+
+		// create Popup->Render Options->Render Mode menu
+		mnuRenderMode.CreateMenu();
+		mnuRenderMode.AppendMenu(MF_STRING,
+			ID_POPUPMENU_WINDOWPROPERTIES_RENDEROPTIONS_MODE_BOX, "Box");
+		mnuRenderMode.AppendMenu(MF_STRING,
+			ID_POPUPMENU_WINDOWPROPERTIES_RENDEROPTIONS_MODE_WIRE, "Wire");
+		mnuRenderMode.AppendMenu(MF_STRING,
+			ID_POPUPMENU_WINDOWPROPERTIES_RENDEROPTIONS_MODE_SOLID, "Solid");
+		mnuRenderMode.AppendMenu(MF_STRING,
+			ID_POPUPMENU_WINDOWPROPERTIES_RENDEROPTIONS_MODE_SOLIDWIRE, "Solid + Wire");
+		mnuRenderMode.AppendMenu(MF_STRING,
+			ID_POPUPMENU_WINDOWPROPERTIES_RENDEROPTIONS_MODE_TEXTURE, "Texture");
+		mnuRenderMode.AppendMenu(MF_STRING,
+			ID_POPUPMENU_WINDOWPROPERTIES_RENDEROPTIONS_MODE_TEXTUREWIRE, "Texture + Wire");
+		mnuRenderMode.AppendMenu(MF_STRING,
+			ID_POPUPMENU_WINDOWPROPERTIES_RENDEROPTIONS_MODE_BLEND, "Blend");
+		mnuRenderMode.AppendMenu(MF_STRING,
+			ID_POPUPMENU_WINDOWPROPERTIES_RENDEROPTIONS_MODE_BLENDWIRE, "Blend + Wire");
+		mnuRenderMode.AppendMenu(MF_STRING,
+			ID_POPUPMENU_WINDOWPROPERTIES_RENDEROPTIONS_MODE_LIGHT, "Light");
+		mnuRenderMode.AppendMenu(MF_STRING,
+			ID_POPUPMENU_WINDOWPROPERTIES_RENDEROPTIONS_MODE_LIGHTWIRE, "Light + Wire");
+		mnuRenderMode.CheckMenuRadioItem(0, 9, m_WindowInfo.sRenderOptions.eMode,
+			MF_BYPOSITION);
+
+		// create Popup->Render Options->Polygone Mode->Front menu
+		mnuPolygonModeFront.CreateMenu();
+		mnuPolygonModeFront.AppendMenu(MF_STRING,
+			ID_POPUPMENU_WINDOWPROPERTIES_RENDEROPTIONS_POLYGONMODE_FRONT_GLPOINT,
+			"GL_POINT");
+		mnuPolygonModeFront.AppendMenu(MF_STRING,
+			ID_POPUPMENU_WINDOWPROPERTIES_RENDEROPTIONS_POLYGONMODE_FRONT_GLLINE,
+			"GL_LINE");
+		mnuPolygonModeFront.AppendMenu(MF_STRING,
+			ID_POPUPMENU_WINDOWPROPERTIES_RENDEROPTIONS_POLYGONMODE_FRONT_GLFILL,
+			"GL_FILL");
+		mnuPolygonModeFront.CheckMenuRadioItem(0, 2,
+			m_WindowInfo.sRenderOptions.PolyRasterMethod[0] == GL_POINT ? 0 :
+			m_WindowInfo.sRenderOptions.PolyRasterMethod[0] == GL_LINE ? 1 : 2,
+			MF_BYPOSITION);
+
+		// create Popup->Render Options->Polygone Mode->Back menu
+		mnuPolygonModeBack.CreateMenu();
+		mnuPolygonModeBack.AppendMenu(MF_STRING,
+			ID_POPUPMENU_WINDOWPROPERTIES_RENDEROPTIONS_POLYGONMODE_BACK_GLPOINT,
+			"GL_POINT");
+		mnuPolygonModeBack.AppendMenu(MF_STRING,
+			ID_POPUPMENU_WINDOWPROPERTIES_RENDEROPTIONS_POLYGONMODE_BACK_GLLINE,
+			"GL_LINE");
+		mnuPolygonModeBack.AppendMenu(MF_STRING,
+			ID_POPUPMENU_WINDOWPROPERTIES_RENDEROPTIONS_POLYGONMODE_BACK_GLFILL,
+			"GL_FILL");
+		mnuPolygonModeBack.CheckMenuRadioItem(0, 2,
+			m_WindowInfo.sRenderOptions.PolyRasterMethod[1] == GL_POINT ? 0 :
+			m_WindowInfo.sRenderOptions.PolyRasterMethod[1] == GL_LINE ? 1 : 2,
+			MF_BYPOSITION);
+
+		// create Popup->Render Options->Polygone Mode menu
+		mnuPolygonMode.CreateMenu();
+		mnuPolygonMode.AppendMenu(MF_POPUP, (UINT_PTR)mnuPolygonModeFront.m_hMenu, "Front");
+		mnuPolygonMode.AppendMenu(MF_POPUP, (UINT_PTR)mnuPolygonModeBack.m_hMenu, "Back");
+
+		// create Popup->Render Options->Shade Model menu
+		mnuShadeModel.CreateMenu();
+		mnuShadeModel.AppendMenu(MF_STRING,
+			ID_POPUPMENU_WINDOWPROPERTIES_RENDEROPTIONS_SHADEMODEL_GLFLAT,
+			"GL_FLAT");
+		mnuShadeModel.AppendMenu(MF_STRING,
+			ID_POPUPMENU_WINDOWPROPERTIES_RENDEROPTIONS_SHADEMODEL_GLSMOOTH,
+			"GL_SMOOTH");
+		mnuShadeModel.CheckMenuRadioItem(0, 1,
+			m_WindowInfo.sRenderOptions.ShadeModel == GL_FLAT ? 0 : 1, MF_BYPOSITION);
+
+		// create Popup->Render Options menu
+		mnuRenderOptions.CreateMenu();
+		mnuRenderOptions.AppendMenu(MF_POPUP, (UINT_PTR)mnuRenderMode.m_hMenu, "Mode");
+		mnuRenderOptions.AppendMenu(MF_POPUP, (UINT_PTR)mnuPolygonMode.m_hMenu, "Polygon Mode");
+		mnuRenderOptions.AppendMenu(MF_POPUP, (UINT_PTR)mnuShadeModel.m_hMenu, "ShadeModel");
+		mnuRenderOptions.AppendMenu(MF_STRING,
+			ID_POPUPMENU_WINDOWPROPERTIES_RENDEROPTIONS_CULLFACE, "Cull Face");
+		if(m_WindowInfo.sRenderOptions.bCullFace)
+			mnuRenderOptions.CheckMenuItem(
+			ID_POPUPMENU_WINDOWPROPERTIES_RENDEROPTIONS_CULLFACE, MF_CHECKED|MF_BYCOMMAND);
+
+		// create Popup->Window Options menu
+		UINT_PTR nID = 60000;
+		mnuWindowOptions.CreatePopupMenu();
+		mnuWindowOptions.AppendMenu(MF_STRING, ID_POPUPMENU_WINDOWPROPERTIES_FRONT, "Front");
+		mnuWindowOptions.AppendMenu(MF_STRING, ID_POPUPMENU_WINDOWPROPERTIES_BACK, "Back");
+		mnuWindowOptions.AppendMenu(MF_STRING, ID_POPUPMENU_WINDOWPROPERTIES_LEFT, "Left");
+		mnuWindowOptions.AppendMenu(MF_STRING, ID_POPUPMENU_WINDOWPROPERTIES_RIGHT, "Right");
+		mnuWindowOptions.AppendMenu(MF_STRING, ID_POPUPMENU_WINDOWPROPERTIES_BOTTOM, "Bottom");
+		mnuWindowOptions.AppendMenu(MF_STRING, ID_POPUPMENU_WINDOWPROPERTIES_TOP, "Top");
+		mnuWindowOptions.AppendMenu(MF_STRING, ID_POPUPMENU_WINDOWPROPERTIES_PERSPECTIVE, "Perspective");
+		mnuWindowOptions.AppendMenu(MF_SEPARATOR, nID++, "");
+		mnuWindowOptions.AppendMenu(MF_POPUP, (UINT_PTR)mnuRenderOptions.m_hMenu, "Render Options");
+		mnuWindowOptions.AppendMenu(MF_SEPARATOR, nID++, "");
+		mnuWindowOptions.AppendMenu(MF_STRING, ID_POPUPMENU_WINDOWPROPERTIES_DISABLEWINDOW, "Disable Window");
+		const UINT vmtable[VM_TOTALEDITVIEW] = { 0, 2, 4, 1, 3, 5, 6 };
+		mnuWindowOptions.CheckMenuRadioItem(0, 6, vmtable[m_WindowInfo.eMode],
+			MF_CHECKED|MF_BYPOSITION);
+		if(m_WindowInfo.bDisable)
+		{
+			mnuWindowOptions.CheckMenuItem(ID_POPUPMENU_WINDOWPROPERTIES_DISABLEWINDOW,
+				MF_CHECKED|MF_BYCOMMAND);
+
+			// grayed all
+			for(UINT i = 0; i < 10; ++i)
+				mnuWindowOptions.EnableMenuItem(i, MF_GRAYED|MF_BYPOSITION);
+		}
+
+		// show Window Options menu
+		ClientToScreen(&point);
+		mnuWindowOptions.TrackPopupMenu(TPM_LEFTALIGN | TPM_RIGHTBUTTON, point.x, point.y, this);
+	}
+
+	COpenGLWnd::OnRButtonDown(nFlags, point);
+}
+
+void CEditWnd::OnChangeViewMode(UINT nID)
+{
+	ASSERT(nID >= ID_POPUPMENU_WINDOWPROPERTIES_FRONT &&
+		   nID <= ID_POPUPMENU_WINDOWPROPERTIES_PERSPECTIVE);
+	ASSERT((ID_POPUPMENU_WINDOWPROPERTIES_PERSPECTIVE - nID) >= 0 &&
+		   (ID_POPUPMENU_WINDOWPROPERTIES_PERSPECTIVE - nID) < VM_TOTALEDITVIEW);
+
+	const VIEWMODE	vmtable[VM_TOTALEDITVIEW] = {
+						VM_PERSPECTIVE, VM_TOP, VM_BOTTOM,
+						VM_RIGHT, VM_LEFT, VM_BACK, VM_FRONT };
+
+	if(m_WindowInfo.Set(
+		VIEWMODE(vmtable[ID_POPUPMENU_WINDOWPROPERTIES_PERSPECTIVE - nID])))
+		COpenGLWnd::RedrawWindow();
+		// TODO: reset m_vOrigin to zero?
+}
+
+void CEditWnd::OnChangeRenderingMode(UINT nID)
+{
+	if(m_WindowInfo.Set(
+		DRAWMODE(nID - ID_POPUPMENU_WINDOWPROPERTIES_RENDEROPTIONS_MODE_BOX)))
+		COpenGLWnd::RedrawWindow();
+}
+
+void CEditWnd::OnChangeShadeModel(UINT nID)
+{
+	ASSERT(nID == ID_POPUPMENU_WINDOWPROPERTIES_RENDEROPTIONS_SHADEMODEL_GLFLAT ||
+		   nID == ID_POPUPMENU_WINDOWPROPERTIES_RENDEROPTIONS_SHADEMODEL_GLSMOOTH);
+
+	const UINT newsm =
+		nID == ID_POPUPMENU_WINDOWPROPERTIES_RENDEROPTIONS_SHADEMODEL_GLFLAT ?
+																	GL_FLAT : GL_SMOOTH;
+	if(m_WindowInfo.sRenderOptions.ShadeModel != newsm)
+	{
+		m_WindowInfo.sRenderOptions.ShadeModel = newsm;
+		COpenGLWnd::RedrawWindow();
+	}
+}
+
+void CEditWnd::OnChangePolygonMode(UINT nID)
+{
+	ASSERT(nID >= ID_POPUPMENU_WINDOWPROPERTIES_RENDEROPTIONS_POLYGONMODE_FRONT_GLPOINT &&
+		   nID <= ID_POPUPMENU_WINDOWPROPERTIES_RENDEROPTIONS_POLYGONMODE_BACK_GLFILL);
+	ASSERT(nID - ID_POPUPMENU_WINDOWPROPERTIES_RENDEROPTIONS_POLYGONMODE_FRONT_GLPOINT >= 0 &&
+		   nID - ID_POPUPMENU_WINDOWPROPERTIES_RENDEROPTIONS_POLYGONMODE_FRONT_GLPOINT < 6);
+
+	const UINT pmtable[6] =
+		{ GL_POINT, GL_LINE, GL_FILL, GL_POINT, GL_LINE, GL_FILL };
+	const UINT newpm =
+		pmtable[nID - ID_POPUPMENU_WINDOWPROPERTIES_RENDEROPTIONS_POLYGONMODE_FRONT_GLPOINT];
+
+	if(nID < ID_POPUPMENU_WINDOWPROPERTIES_RENDEROPTIONS_POLYGONMODE_BACK_GLPOINT)
+	{	// work with FRONT poly side
+		if(m_WindowInfo.sRenderOptions.PolyRasterMethod[0] != newpm)
+		{
+			m_WindowInfo.sRenderOptions.PolyRasterMethod[0] = newpm;
+			COpenGLWnd::RedrawWindow();
+		}
+	}
+	else
+	{	// work with BACK poly side
+		if(m_WindowInfo.sRenderOptions.PolyRasterMethod[1] != newpm)
+		{
+			m_WindowInfo.sRenderOptions.PolyRasterMethod[1] = newpm;
+			COpenGLWnd::RedrawWindow();
+		}
+	}
+}
+
+void CEditWnd::OnChangeCullFace()
+{
+	m_WindowInfo.sRenderOptions.bCullFace = !m_WindowInfo.sRenderOptions.bCullFace;
+	COpenGLWnd::RedrawWindow();
+}
+
+void CEditWnd::OnChangeDisableWindow()
+{
+	m_WindowInfo.bDisable = !m_WindowInfo.bDisable;
+	m_WindowInfo.bDisable ?
+		m_WindowInfo.sLabel.uLabelSize += 9 :
+		m_WindowInfo.sLabel.uLabelSize -= 9;
+	COpenGLWnd::RedrawWindow();
+}
+
+void CEditWnd::OnRButtonUp(UINT nFlags, CPoint point)
+{
+	// TODO: Add your message handler code here and/or call default
+	COpenGLWnd::OnRButtonUp(nFlags, point);
+}
+
+void CEditWnd::OnRButtonDblClk(UINT nFlags, CPoint point)
+{
+	// TODO: Add your message handler code here and/or call default
+	COpenGLWnd::OnRButtonDblClk(nFlags, point);
+}
+
+void CEditWnd::OnMouseMove(UINT nFlags, CPoint point)
+{
+	// TODO: Add your message handler code here and/or call default
+	if(m_WindowInfo.bDisable)
+		return COpenGLWnd::OnMouseMove(nFlags, point);		// exit
+
+	// *** SET MOUSE CAPTURE INFO ***
+	ScreenToWorld(point, vMouseCurrent, PREFERENCES::Current.bSnapToGrid);
+	ScreenToWorld(point, vMouseCurrentNS, false);
+
+	// *** PROCESS MOUSE ACTION ***
+	switch(CEditWnd::EDITINGSTATUS)
+	{
+	case ES_SELECTION:
+		if(!nFlags)
+		{
+			// SET STATUS BAR COORD INFO
+			CStatusBar *pStatusBar = (CStatusBar*)CWnd::GetParentFrame()->GetMessageBar();
+			ASSERT(pStatusBar);
+			if(m_WindowInfo.eType == VT_2D)
+			{
+				CString coord2D;
+				coord2D.Format("%.0f, %.0f", vMouseCurrentNS.X, vMouseCurrentNS.Y);
+				pStatusBar->SetPaneText(1, coord2D);
+			}
+			else // VT_3D
+				pStatusBar->SetPaneText(1, "");
+		}
+		break;
+	case ES_VIEWMOVE:
+		{{{
+		// throwing?
+		POINT cursorpos;
+		::GetCursorPos(&cursorpos);
+		if (ThrowingCursorPos(cursorpos))
+		{
+			::SetCursorPos(cursorpos.x, cursorpos.y);
+			ptPrevPoint = cursorpos;
+			CWnd::ScreenToClient(&ptPrevPoint);
+			return COpenGLWnd::OnMouseMove(nFlags, point);			// exit
+		}
+
+		const VECTOR2 mdelta((point.x - ptPrevPoint.x) / m_fScale,
+								(point.y - ptPrevPoint.y) / m_fScale);
+
+		switch(CEditWnd::VIEWMOVEMODE)
+		{
+		case VMM_2DMOVE:
+			m_vOrigin.X -= mdelta.X, m_vOrigin.Y += mdelta.Y;
+			break;
+		case VMM_2DSCALE:
+			{{{
+			const float deltazoom = mdelta.Magnitude() / 256 * m_fScale * m_fScale;
+			mdelta.Y > 0 ? m_fScale += deltazoom : m_fScale -= deltazoom;
+			if(m_fScale < 0.1F) m_fScale = 0.1F;
+			if(m_fScale > 16)	m_fScale = 16;
+			}}}
+			break;
+		case VMM_3DFLY:
+			ASSERT(Camera::pCurrent);
+			Camera::pCurrent->m_vAngles[0] += mdelta.Y / 2;
+			Camera::pCurrent->m_vAngles[1] -= mdelta.X / 2;
+			// update forward-right-up cam vectors
+			Camera::pCurrent->BuildMatrix();
+			break;
+		}
+
+		// redraw current window
+		COpenGLWnd::RedrawWindow();
+		}}}
+		break;
+	case ES_CREATE:
+		{{{
+		const VECTOR3 origin(vMouseOrigin, m_WindowInfo.eMode),
+					  current(vMouseCurrent, m_WindowInfo.eMode);
+		BRUSH brush;
+		brush.MakeBox(origin, current);
+		brush.RebuildBox(origin, current, PREFERENCES::Current.sGrid.Major.nStep);
+
+		// if size() == capacity() next push get realloc vector
+		// and all pointer in SELECTEDBRUSHLIST would be nonvalid 
+		if(BRUSH::WORLDBRUSHLIST.size() == BRUSH::WORLDBRUSHLIST.capacity()) {
+			BRUSH::WORLDBRUSHLIST.push_back(brush);
+			BRUSH::ReInitSelectedBrushList();
+		} else {
+			BRUSH::WORLDBRUSHLIST.push_back(brush);
+			BRUSH::SELECTEDBRUSHLIST.push_back(&BRUSH::WORLDBRUSHLIST.back());
+		}
+
+		CEditWnd::EDITINGSTATUS = ES_MODIFY;
+		CEditWnd::MODIFYMODE = MM_DRAGCREATE;
+		RedrawWindow(WU_ALLEDIT);
+		}}}
+		break;
+	case ES_MODIFY:
+		{{{
+		VECTOR3 delta(vMouseCurrent - vMouseOrigin, m_WindowInfo.eMode);
+		switch(CEditWnd::MODIFYMODE)
+		{
+		case MM_DRAGCREATE:
+			{{{
+			const VECTOR3 origin(vMouseOrigin, m_WindowInfo.eMode),
+						  current(vMouseCurrent, m_WindowInfo.eMode);
+			BRUSH::WORLDBRUSHLIST.back().RebuildBox(
+				origin, current, PREFERENCES::Current.sGrid.Major.nStep
+				);
+			}}}
+			break;
+		case MM_TRANSLATE:
+		case MM_RESIZE:
+			LoadBoxSideTransMatrix(delta);
+			break;
+		case MM_ROTATE:
+			break;
+		case MM_SHEAR:
+			LoadBoxSideShearMatrix(delta);
+			break;
+		case MM_VERTEXDRAG:
+			break;
+		case MM_EDGEDRAG:
+			break;
+		}
+		RedrawWindow(WU_ALLEDIT);
+		}}}
+		break;
+	}
+
+	ptPrevPoint = point;
+	COpenGLWnd::OnMouseMove(nFlags, point);
+}
+
+void CEditWnd::LoadBoxSideTransMatrix(const VECTOR3& delta) const
+{
+	if(DRAGMODIFY2DSIDE == BBOX2::eBoxSideInfo::BSI_INSIDE) {
+		// parallel translation only
+		DRAGMODIFYMATRIX.LoadTranslation(delta);
+		return;
+	}
+
+	const VECTOR3	bsize(DRAGMODIFYBOX.Size()),
+					k((bsize + delta)/bsize),
+					k2((bsize - delta)/bsize);
+		  VECTOR3	t1(VECTOR3::O), sc(VECTOR3::I), t2(VECTOR3::O);
+	const FLOAT& mins = (FLOAT)PREFERENCES::Current.sGrid.Major.nStep;
+	const unsigned &d1 = m_WindowInfo.sDims.D1, &d2 = m_WindowInfo.sDims.D2;
+
+	if(DRAGMODIFY2DSIDE & BBOX2::eBoxSideInfo::BSI_TOP) {
+		t1[d2] = DRAGMODIFYBOX.Min[d2];
+		sc[d2] = k[d2] > 0 ? k[d2] : mins/bsize[d2];
+		t2[d2] = -DRAGMODIFYBOX.Min[d2];
+	}
+	if(DRAGMODIFY2DSIDE & BBOX2::eBoxSideInfo::BSI_RIGHT) {
+		t1[d1] = DRAGMODIFYBOX.Min[d1];
+		sc[d1] = k[d1] > 0 ? k[d1] : mins/bsize[d1];
+		t2[d1] = -DRAGMODIFYBOX.Min[d1];
+	}
+	if(DRAGMODIFY2DSIDE & BBOX2::eBoxSideInfo::BSI_BOTTOM) {
+		t1[d2] = DRAGMODIFYBOX.Max[d2];
+		sc[d2] = k2[d2] > 0 ? k2[d2] : mins/bsize[d2];
+		t2[d2] = -DRAGMODIFYBOX.Max[d2];
+	}
+	if(DRAGMODIFY2DSIDE & BBOX2::eBoxSideInfo::BSI_LEFT) {
+		t1[d1] = DRAGMODIFYBOX.Max[d1];
+		sc[d1] = k2[d1] > 0 ? k2[d1] : mins/bsize[d1];
+		t2[d1] = -DRAGMODIFYBOX.Max[d1];
+	}
+
+	// prepare modifying matrix
+	DRAGMODIFYMATRIX.LoadIdentity();
+	DRAGMODIFYMATRIX.Translate(t1);
+	DRAGMODIFYMATRIX.Scale(sc);
+	DRAGMODIFYMATRIX.Translate(t2);
+}
+
+void CEditWnd::LoadBoxSideShearMatrix(const VECTOR3& delta) const
+{
+	if(DRAGMODIFY2DSIDE == BBOX2::eBoxSideInfo::BSI_INSIDE) {
+		// parallel translation only
+		DRAGMODIFYMATRIX.LoadTranslation(delta);
+		return;
+	}
+
+	const VECTOR3	bsize(DRAGMODIFYBOX.Size()),
+					k((bsize + delta)/bsize),
+					k2((bsize - delta)/bsize);
+		  VECTOR3	t1(VECTOR3::O), sc(VECTOR3::I), t2(VECTOR3::O),
+					shiftaxis[3] = { VECTOR3::O, VECTOR3::O, VECTOR3::O };
+
+	const FLOAT& mins = (FLOAT)PREFERENCES::Current.sGrid.Major.nStep;
+	const unsigned &d1 = m_WindowInfo.sDims.D1, &d2 = m_WindowInfo.sDims.D2;
+
+	if(DRAGMODIFY2DSIDE & BBOX2::eBoxSideInfo::BSI_TOP) {
+		t1[d2] = DRAGMODIFYBOX.Min[d2];
+		sc[d2] = k[d2] > 0 ? k[d2] : mins/bsize[d2];
+		shiftaxis[d1][d2] = delta[d1]/bsize[d2];
+		t2[d2] = -DRAGMODIFYBOX.Min[d2];
+	}
+	if(DRAGMODIFY2DSIDE & BBOX2::eBoxSideInfo::BSI_RIGHT) {
+		t1[d1] = DRAGMODIFYBOX.Min[d1];
+		sc[d1] = k[d1] > 0 ? k[d1] : mins/bsize[d1];
+		shiftaxis[d2][d1] = delta[d2]/bsize[d1];
+		t2[d1] = -DRAGMODIFYBOX.Min[d1];
+	}
+	if(DRAGMODIFY2DSIDE & BBOX2::eBoxSideInfo::BSI_BOTTOM) {
+		t1[d2] = DRAGMODIFYBOX.Max[d2];
+		sc[d2] = k2[d2] > 0 ? k2[d2] : mins/bsize[d2];
+		shiftaxis[d1][d2] = -delta[d1]/bsize[d2];
+		t2[d2] = -DRAGMODIFYBOX.Max[d2];
+	}
+	if(DRAGMODIFY2DSIDE & BBOX2::eBoxSideInfo::BSI_LEFT) {
+		t1[d1] = DRAGMODIFYBOX.Max[d1];
+		sc[d1] = k2[d1] > 0 ? k2[d1] : mins/bsize[d1];
+		shiftaxis[d2][d1] = -delta[d2]/bsize[d1];
+		t2[d1] = -DRAGMODIFYBOX.Max[d1];
+	}
+
+	DRAGMODIFYMATRIX.LoadTranslation(t1);
+	// disable translation if has "double shift" mode
+	if(!(DRAGMODIFY2DSIDE &~
+			(BBOX2::eBoxSideInfo::BSI_TOP|BBOX2::eBoxSideInfo::BSI_BOTTOM)) ||
+		!(DRAGMODIFY2DSIDE &~
+			(BBOX2::eBoxSideInfo::BSI_LEFT|BBOX2::eBoxSideInfo::BSI_RIGHT)))
+		DRAGMODIFYMATRIX.Scale(sc);
+	DRAGMODIFYMATRIX.Shift(shiftaxis[0], shiftaxis[1], shiftaxis[2]);
+	DRAGMODIFYMATRIX.Translate(t2);
+}
+
+void CEditWnd::OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags)
+{
+	if(m_WindowInfo.eType == VT_3D && CEditWnd::EDITINGSTATUS == ES_VIEWMOVE)
+	{
+		ASSERT(Camera::pCurrent);
+		switch(nChar)
+		{
+		case 'W': Camera::pCurrent->Move(-10); break;
+		case 'S': Camera::pCurrent->Move(10); break;
+		case 'A': Camera::pCurrent->Strafe(-10); break;
+		case 'D': Camera::pCurrent->Strafe(10); break;
+		case VK_SPACE:	Camera::pCurrent->m_vOrigin[1] += 5; break;
+		}
+		RedrawWindow();
+	}
+	else
+		switch(nChar)
+		{
+		case VK_ESCAPE:	// deselect all
+			if(!BRUSH::SELECTEDBRUSHLIST.empty())
+			{
+				// clear brush selection
+				BRUSH::ClearSelectedBrushList();
+				RedrawWindow(WU_ALLEDIT);
+			}
+
+			if(FACE::SELECTED.pFace)
+			{
+				// clear face selection
+				FACE::SELECTED.pFace = 0;
+				FACE::SELECTED.pFaceOwner = 0;
+				RedrawWindow(WU_ALLEDIT);
+			}
+
+			CEditWnd::EDITINGSTATUS = ES_SELECTION;		// reset editing status
+			break;
+		case VK_BACK:	// delete selection
+			if(!BRUSH::SELECTEDBRUSHLIST.empty())
+			{
+				BRUSH::DeleteSelectedBrushList();
+				CEditWnd::EDITINGSTATUS = ES_SELECTION;		// reset editing status
+				RedrawWindow(WU_ALLEDIT);
+			}
+			break;
+		case VK_SPACE:	// clone selection
+			if(!BRUSH::SELECTEDBRUSHLIST.empty())
+			{
+				BRUSH::CloneSelectedBrushList(
+					VECTOR3(VECTOR2((FLOAT)PREFERENCES::Current.sGrid.Major.nStep),
+					m_WindowInfo.eMode)
+				);
+				RedrawWindow(WU_ALLEDIT);
+			}
+			break;
+		case VK_RETURN:	// multiply selection
+			if(BRUSH::SELECTEDBRUSHLIST.size() == 1)
+			{
+				const BBOX3 selbox = BRUSH::SELECTEDBRUSHLIST[0]->bbox;
+				BRUSH::WORLDBRUSHLIST.erase(BRUSH::SELECTEDBRUSHLIST[0]);
+				BRUSH::GroupSelectionInWorldBrushList(selbox,
+					m_WindowInfo.eMode, (FLOAT)PREFERENCES::Current.sGrid.Major.nStep
+					);
+				RedrawWindow(WU_ALLEDIT);
+			}
+			break;
+		// move texture...
+		case VK_UP:
+			if(!BRUSH::SELECTEDBRUSHLIST.empty())
+			{
+				BRUSH::MoveTextureCoordsInSelectionBrushList(
+					VECTOR2(0, (FLOAT)PREFERENCES::Current.sGrid.Major.nStep), VECTOR2::O, 0
+					);
+				RedrawWindow(WU_ALLEDIT);
+			}
+			else if(FACE::SELECTED.pFace)
+			{
+				FACE::SELECTED.pFace->MoveTexture(
+					FACE::SELECTED.pFaceOwner->vlist,
+					VECTOR2(0, (FLOAT)PREFERENCES::Current.sGrid.Major.nStep), VECTOR2::O, 0
+					);
+				RedrawWindow(WU_ALLEDIT);
+			}
+			break;
+		case VK_DOWN:
+			if(!BRUSH::SELECTEDBRUSHLIST.empty())
+			{
+				BRUSH::MoveTextureCoordsInSelectionBrushList(
+					VECTOR2(0, -(FLOAT)PREFERENCES::Current.sGrid.Major.nStep), VECTOR2::O, 0
+					);
+				RedrawWindow(WU_ALLEDIT);
+			}
+			else if(FACE::SELECTED.pFace)
+			{
+				FACE::SELECTED.pFace->MoveTexture(
+					FACE::SELECTED.pFaceOwner->vlist,
+					VECTOR2(0, -(FLOAT)PREFERENCES::Current.sGrid.Major.nStep), VECTOR2::O, 0
+					);
+				RedrawWindow(WU_ALLEDIT);
+			}
+			break;
+		case VK_RIGHT:
+			if(!BRUSH::SELECTEDBRUSHLIST.empty())
+			{
+				BRUSH::MoveTextureCoordsInSelectionBrushList(
+					VECTOR2((FLOAT)PREFERENCES::Current.sGrid.Major.nStep, 0), VECTOR2::O, 0
+					);
+				RedrawWindow(WU_ALLEDIT);
+			}
+			else if(FACE::SELECTED.pFace)
+			{
+				FACE::SELECTED.pFace->MoveTexture(
+					FACE::SELECTED.pFaceOwner->vlist,
+					VECTOR2((FLOAT)PREFERENCES::Current.sGrid.Major.nStep, 0), VECTOR2::O, 0
+					);
+				RedrawWindow(WU_ALLEDIT);
+			}
+			break;
+		case VK_LEFT:
+			if(!BRUSH::SELECTEDBRUSHLIST.empty())
+			{
+				BRUSH::MoveTextureCoordsInSelectionBrushList(
+					VECTOR2(-(FLOAT)PREFERENCES::Current.sGrid.Major.nStep, 0), VECTOR2::O, 0
+					);
+				RedrawWindow(WU_ALLEDIT);
+			}
+			else if(FACE::SELECTED.pFace)
+			{
+				FACE::SELECTED.pFace->MoveTexture(
+					FACE::SELECTED.pFaceOwner->vlist,
+					VECTOR2(-(FLOAT)PREFERENCES::Current.sGrid.Major.nStep, 0), VECTOR2::O, 0
+					);
+				RedrawWindow(WU_ALLEDIT);
+			}
+			break;
+		}
+	
+	COpenGLWnd::OnKeyDown(nChar, nRepCnt, nFlags);
+}
+
+void CEditWnd::OnSysKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags)
+{	// ALT + <any key>
+	if(nChar != VK_MENU)
+		switch(nChar)
+		{
+		// scale texture...
+		case VK_UP:
+			if(!BRUSH::SELECTEDBRUSHLIST.empty())
+			{
+				BRUSH::MoveTextureCoordsInSelectionBrushList(VECTOR2::O, VECTOR2(0, 0.1F), 0);
+				RedrawWindow(WU_ALLEDIT);
+			}
+			else if(FACE::SELECTED.pFace)
+			{
+				FACE::SELECTED.pFace->MoveTexture(
+					FACE::SELECTED.pFaceOwner->vlist, VECTOR2::O, VECTOR2(0, 0.1F), 0
+					);
+				RedrawWindow(WU_ALLEDIT);
+			}
+			break;
+		case VK_DOWN:
+			if(!BRUSH::SELECTEDBRUSHLIST.empty())
+			{
+				BRUSH::MoveTextureCoordsInSelectionBrushList(VECTOR2::O, VECTOR2(0, -0.1F), 0);
+				RedrawWindow(WU_ALLEDIT);
+			}
+			else if(FACE::SELECTED.pFace)
+			{
+				FACE::SELECTED.pFace->MoveTexture(
+					FACE::SELECTED.pFaceOwner->vlist, VECTOR2::O, VECTOR2(0, -0.1F), 0
+					);
+				RedrawWindow(WU_ALLEDIT);
+			}
+			break;
+		case VK_RIGHT:
+			if(!BRUSH::SELECTEDBRUSHLIST.empty())
+			{
+				BRUSH::MoveTextureCoordsInSelectionBrushList(VECTOR2::O, VECTOR2(0.1F, 0), 0);
+				RedrawWindow(WU_ALLEDIT);
+			}
+			else if(FACE::SELECTED.pFace)
+			{
+				FACE::SELECTED.pFace->MoveTexture(
+					FACE::SELECTED.pFaceOwner->vlist, VECTOR2::O, VECTOR2(0.1F, 0), 0
+					);
+				RedrawWindow(WU_ALLEDIT);
+			}
+			break;
+		case VK_LEFT:
+			if(!BRUSH::SELECTEDBRUSHLIST.empty())
+			{
+				BRUSH::MoveTextureCoordsInSelectionBrushList(VECTOR2::O, VECTOR2(-0.1F, 0), 0);
+				RedrawWindow(WU_ALLEDIT);
+			}
+			else if(FACE::SELECTED.pFace)
+			{
+				FACE::SELECTED.pFace->MoveTexture(
+					FACE::SELECTED.pFaceOwner->vlist, VECTOR2::O, VECTOR2(-0.1F, 0), 0
+					);
+				RedrawWindow(WU_ALLEDIT);
+			}
+			break;
+		case VK_PRIOR:
+			if(!BRUSH::SELECTEDBRUSHLIST.empty())
+			{
+				BRUSH::MoveTextureCoordsInSelectionBrushList(VECTOR2::O, VECTOR2::O, 15);
+				RedrawWindow(WU_ALLEDIT);
+			}
+			else if(FACE::SELECTED.pFace)
+			{
+				FACE::SELECTED.pFace->MoveTexture(
+					FACE::SELECTED.pFaceOwner->vlist, VECTOR2::O, VECTOR2::O, 15
+					);
+				RedrawWindow(WU_ALLEDIT);
+			}
+			break;
+		case VK_NEXT:
+			if(!BRUSH::SELECTEDBRUSHLIST.empty())
+			{
+				BRUSH::MoveTextureCoordsInSelectionBrushList(VECTOR2::O, VECTOR2::O, -15);
+				RedrawWindow(WU_ALLEDIT);
+			}
+			else if(FACE::SELECTED.pFace)
+			{
+				FACE::SELECTED.pFace->MoveTexture(
+					FACE::SELECTED.pFaceOwner->vlist, VECTOR2::O, VECTOR2::O, -15
+					);
+				RedrawWindow(WU_ALLEDIT);
+			}
+			break;
+		}
+
+	COpenGLWnd::OnSysKeyDown(nChar, nRepCnt, nFlags);
+}
+
+void CEditWnd::ScreenToWorld(const CPoint& ptScreen, VECTOR2& vecWorld, bool snaptogrid) const
+{
+	vecWorld.X = m_vOrigin.X + (ptScreen.x - (m_iWidth>>1)) / m_fScale;
+	vecWorld.Y = m_vOrigin.Y - (ptScreen.y - (m_iHeight>>1)) / m_fScale;
+	if(snaptogrid)														// need floor?
+		vecWorld.Floor(PREFERENCES::Current.sGrid.Major.nStep);
+	if(m_WindowInfo.eMode == VM_BACK || m_WindowInfo.eMode == VM_RIGHT)
+		vecWorld.X = -vecWorld.X;			// invert x/z-axis
+	else if(m_WindowInfo.eMode == VM_TOP)
+		vecWorld.Y = -vecWorld.Y;			// invert z-axis
+}
+
+void CEditWnd::ScreenToWorld(const CPoint& ptScreen, VECTOR3& vecWorld, bool snaptogrid) const
+{
+	vecWorld[m_WindowInfo.sDims.D1] = m_vOrigin[m_WindowInfo.sDims.D1] +
+										(ptScreen.x - (m_iWidth>>1)) / m_fScale;
+	vecWorld[m_WindowInfo.sDims.D2] = m_vOrigin[m_WindowInfo.sDims.D2] -
+										(ptScreen.y - (m_iHeight>>1)) / m_fScale;
+	vecWorld[3 - m_WindowInfo.sDims.D1 - m_WindowInfo.sDims.D2] = 0;
+	if(snaptogrid)
+	{
+		vecWorld[m_WindowInfo.sDims.D1] = ::floor(vecWorld[m_WindowInfo.sDims.D1] /
+											PREFERENCES::Current.sGrid.Major.nStep + 0.5F) *
+												PREFERENCES::Current.sGrid.Major.nStep;
+		vecWorld[m_WindowInfo.sDims.D2] = ::floor(vecWorld[m_WindowInfo.sDims.D2] /
+											PREFERENCES::Current.sGrid.Major.nStep + 0.5F) *
+												PREFERENCES::Current.sGrid.Major.nStep;
+	}
+
+	if(m_WindowInfo.eMode == VM_BACK)
+		vecWorld.X = -vecWorld.X;			// invert x-axis
+	else if(m_WindowInfo.eMode == VM_TOP || m_WindowInfo.eMode == VM_RIGHT)
+		vecWorld.Z = -vecWorld.Z;			// invert z-axis
+}
+
+void CEditWnd::RedrawWindow(WINDOWUPDATE wu)
+{
+	for(unsigned w = 0; w < PREFERENCES::Current.nNumEditWindow; ++w)
+	{
+		ASSERT(CEditWnd::pEditWindow[w]);
+		if(CEditWnd::pEditWindow[w]->m_WindowInfo.eUpdate & wu)
+			CEditWnd::pEditWindow[w]->COpenGLWnd::RedrawWindow();
+	}
+}
